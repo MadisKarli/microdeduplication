@@ -1,0 +1,16 @@
+changed the way MicrodataExtraction extracts gets the result string
+
+Now it also works with longer files and actually extracts more triples
+438 rows vs 645 rows
+
+spark gets 689 rows
+
+but it is about 2 times slower
+
+with cache 
+5.9 mins
+17/12/28 12:19:02 ERROR root: time: 354214
+
+without:
+5.8 mins
+17/12/28 12:25:47 ERROR root: time: 349566
