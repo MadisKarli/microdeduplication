@@ -1,23 +1,27 @@
 package ee.thesis.processSeqFiles.utils;
 
 
-import java.io.ByteArrayOutputStream;
-import java.io.File;
-import java.io.FileWriter;
-import java.io.IOException;
+import java.io.*;
 import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
 import org.apache.any23.Any23;
+import org.apache.any23.configuration.Configuration;
+import org.apache.any23.configuration.DefaultConfiguration;
+import org.apache.any23.configuration.DefaultModifiableConfiguration;
 import org.apache.any23.source.DocumentSource;
 import org.apache.any23.source.*;
 import org.apache.any23.writer.NTriplesWriter;
 import org.apache.any23.writer.TripleHandler;
+import org.apache.log4j.LogManager;
+import org.apache.log4j.Logger;
 
-public class MicroDataExtraction {
+public class MicroDataExtraction implements Serializable {
 	List<String> statementsList;
+
+	private static final Logger logger = LogManager.getLogger(MicroDataExtraction.class);
 	
 	public MicroDataExtraction(List<String> statementsList){
 		this.statementsList=statementsList;
@@ -25,27 +29,26 @@ public class MicroDataExtraction {
 	
 	public String extractMicroData(String htmlContents) throws Exception{
 		
-		System.out.println("In extracting microdata.");
-		
+		logger.debug("In extracting microdata.");
+
+		DefaultConfiguration cf = DefaultConfiguration.singleton();
 		Any23 runner = new Any23("html-microdata");
-		
+
 		File file=createTempFile(htmlContents); 
 		
 		DocumentSource source= new FileDocumentSource(file);
-		System.out.println("Document source created.");
+		logger.debug("Document source created.");
 		
 		ByteArrayOutputStream out = new ByteArrayOutputStream();
 		TripleHandler handler = new NTriplesWriter(out);
-		System.out.println("Triple handler occupied.");
+		logger.debug("Triple handler occupied.");
 		String result ="";
 		      try {
-		    	  System.out.println("Extracting microdata.");
+				  logger.debug("Extracting microdata.");
 		    	  runner.extract(source, handler);
 		    	  result = out.toString("UTF-8");
-		  		  System.out.println("############################");
-		  		  System.out.println(result);
-		  		  System.out.println("############################");
-		      } 
+				  logger.debug(result);
+		      }
 		      finally {		
 		    	 handler.close();		    	 
 		      }
@@ -65,7 +68,7 @@ public class MicroDataExtraction {
 		for(String statement:triplesSet){
 			uResult+=statement+"\n";
 		}
-		System.out.println(uResult);
+		logger.debug(uResult);
 		return uResult;		 
 	}
 
@@ -87,7 +90,7 @@ public class MicroDataExtraction {
 		StringBuilder stat=null;
 		for(String statement: statements){
 			stat=new StringBuilder("");
-			System.out.println(statement);
+			logger.debug(statement);
 			String[] statParts=statement.split("\\s(<|\"|_)");
 		
 			String subject=statParts[0].replaceAll("(<|>|\")", "");
@@ -97,7 +100,7 @@ public class MicroDataExtraction {
 			stat.append("<"+key+">, ").append("<"+subject+">, ")
 				.append("<"+predicate+">, ").append("<"+object+">");
 			statementsList.add(stat.toString());
-			//System.out.println(stat.toString());
+			//logger.debug(stat.toString());
 		}
 	}
 	

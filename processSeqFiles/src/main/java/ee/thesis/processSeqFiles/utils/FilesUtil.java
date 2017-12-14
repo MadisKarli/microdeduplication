@@ -15,10 +15,13 @@ import org.apache.hadoop.io.Writable;
 import org.apache.hadoop.io.WritableComparable;
 
 import ee.thesis.processSeqFiles.models.KeyValue;
-
+import org.apache.log4j.LogManager;
+import org.apache.log4j.Logger;
 
 
 public class FilesUtil {
+
+	private static final Logger logger = LogManager.getLogger(FilesUtil.class);
 	
 	public static List<KeyValue> readSequenceFile(String seqFilePath) 
 			throws IOException, ExtractionException, TripleHandlerException, 
@@ -27,7 +30,7 @@ public class FilesUtil {
 		SequenceFile.Reader reader=null;
 		KeyValue keyValue=null;
 		List<KeyValue> keyValueList=new ArrayList<KeyValue>();
-		System.out.println("Reading Sequence File.");
+		logger.info("Reading Sequence File.");
 		try{					
 			Configuration config = new Configuration();
 			Path path = new Path("file:///"+seqFilePath);
@@ -39,10 +42,10 @@ public class FilesUtil {
 				//if(value.toString().contains("schema.org/Product")){
 					keyValue.setKey(key.toString());
 					keyValue.setValue(value.toString());
-					keyValueList.add(keyValue);					
-				//}			
+					keyValueList.add(keyValue);
+				//}
 			}
-			System.out.println("Sequence file is read.");
+			logger.info("Sequence file is read.");
 			return keyValueList;
 		}catch(Exception e){
 			throw e;
