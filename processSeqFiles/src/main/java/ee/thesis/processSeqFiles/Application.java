@@ -1,27 +1,37 @@
 package ee.thesis.processSeqFiles;
 
-import ee.thesis.processSeqFiles.models.KeyValue;
-import ee.thesis.processSeqFiles.utils.FilesUtil;
-import ee.thesis.processSeqFiles.utils.MicroDataExtraction;
-import org.apache.commons.io.FilenameUtils;
+import ee.thesis.processSeqFiles.utils.spark.ExtractMicrodataFlatMapFunction;
+import ee.thesis.processSeqFiles.utils.spark.IgnoreMetadataFunction;
+import ee.thesis.processSeqFiles.utils.spark.MapToPairFunction;
+import nl.surfsara.warcutils.WarcInputFormat;
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.io.Text;
-import org.apache.hadoop.mapreduce.lib.input.SequenceFileInputFormat;
+import org.apache.hadoop.io.LongWritable;
+import org.apache.log4j.Level;
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
 import org.apache.spark.SparkConf;
+import org.apache.spark.api.java.JavaNewHadoopRDD;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
-import org.apache.spark.api.java.function.FlatMapFunction;
-import scala.Tuple2;
-
-import java.io.File;
-import java.util.ArrayList;
-import java.util.List;
+import org.jwat.warc.WarcRecord;
 
 
-
+/*
+* Created by Madis-Karli Koppel and Khalil Rehman
+* Extracts ntriples (n-quads) from WARC (web crawling) files
+* Uses Apache Any23
+* Ignores warc metadata files
+* @param input directory containing warc files
+* @param output directory for ntriples
+*
+* A ntriple (n-quad) contains key, subject, predicate and object
+* full: <http::www.avancia.ee::/juuksehooldus/squarespace.net::null::20150214221751>, <_:node7145b4d244f0db32ed9ae797c299fd1a>, <http://schema.org/WebPage/name>, <Avancia ilusalong@et-ee>
+* key - contains location and crawl date'<http::www.avancia.ee::/juuksehooldus/squarespace.net::null::20150214221751>'
+* subject - '<java:MicroDataExtraction>' or '<_:node7145b4d244f0db32ed9ae797c299fd1a>'
+* predicate - '<http://purl.org/dc/terms/title>'
+* object - '<Avancia ilusalong@et-ee>'
+*/
 public class Application {
 
     private static final Logger logger = LogManager.getLogger(Application.class);
@@ -31,122 +41,54 @@ public class Application {
         long start = System.currentTimeMillis();
 
         if (args.length < 2) {
-            System.out.println("Please enter paths to read and write file(s)");
+            System.out.println("Please enter <input directory> and <output directory>");
             return;
         }
 
-        String seqFileDirectoryPath = args[0];//"D:\\Docs\\Thesis\\SequenceFiles";
-        String nTriplesDirectoryPath = args[1];//"D:\\Docs\\Thesis\\NTriples";
+        String seqFileDirectoryPath = args[0];
+        String nTriplesDirectoryPath = args[1] + String.valueOf(System.currentTimeMillis());
 
-
-
-        sparkVersion(seqFileDirectoryPath, nTriplesDirectoryPath+"spark");
-
-        //oldVersion(seqFileDirectoryPath, nTriplesDirectoryPath+"old");
+        sparkNtripleExtractor(seqFileDirectoryPath, nTriplesDirectoryPath + "spark");
 
         long end = System.currentTimeMillis();
 
-        logger.error("time: " + String.valueOf(end-start));
+        logger.error("time: " + String.valueOf(end - start));
     }
 
 
-    public static void sparkVersion(String seqFileDirectoryPath, String nTriplesDirectoryPath){
-
-        MicroDataExtraction microDataExtraction = new MicroDataExtraction(new ArrayList<>());;
+    /*
+     * Read in warc files and extract ntriples
+     * @param string warcFileDirectoryPath - path to directory containing warc files
+     * @param string nTriplesDirectoryPath - path for output directory
+     */
+    public static void sparkNtripleExtractor(String warcFileDirectoryPath, String nTriplesDirectoryPath) {
 
         // Initialise Spark
         SparkConf sparkConf = new SparkConf().setAppName("metadata extractor");
         JavaSparkContext sc = new JavaSparkContext(sparkConf);
         Configuration hadoopconf = new Configuration();
 
+        // against java.io.IOException: Filesystem closed
+        hadoopconf.setBoolean("fs.hdfs.impl.disable.cache", true);
 
-        //Read in all warc records
-        JavaPairRDD<Text, Text> warcRecords = sc.newAPIHadoopFile(seqFileDirectoryPath, SequenceFileInputFormat.class, Text.class, Text.class, hadoopconf);
+        // Read in all warc records
+        JavaNewHadoopRDD<LongWritable, WarcRecord> warcRecords =
+                (JavaNewHadoopRDD<LongWritable, WarcRecord>) sc.newAPIHadoopFile(warcFileDirectoryPath, WarcInputFormat.class, LongWritable.class, WarcRecord.class, hadoopconf);
 
-        JavaRDD<String> ntriples = warcRecords.flatMap(new FlatMapFunction<Tuple2<Text, Text>, String>() {
-            @Override
-            public Iterable<String> call(Tuple2<Text, Text> tuple2) throws Exception {
-                try {
-                    //String payload =  IOUtils.toString(tuple2._2.getPayload().getInputStream(), StandardCharsets.UTF_8);
+        // Ignore metadata files - they are big (1 GB) and reading them takes too much time
+        JavaPairRDD<String, String> warcsWithoutMetadata =
+                warcRecords
+                        .mapPartitionsWithInputSplit(new IgnoreMetadataFunction(), true)
+                        .mapToPair(new MapToPairFunction());
 
-                    String nTriples =
-                            microDataExtraction.extractMicroData(tuple2._2.toString());
 
-                    microDataExtraction.setStatements(tuple2._1.toString(), nTriples);
-                    // logger.debug(microDataExtractionSpark.getStatements());
-
-                } catch (Exception e) {
-                    return new ArrayList();
-                }
-                return microDataExtraction.getStatements();
-            }
-        });
-
+        // Extract ntriples from warc files
+        JavaRDD<String> ntriples =
+                warcsWithoutMetadata.
+                        flatMap(new ExtractMicrodataFlatMapFunction());
 
         ntriples.saveAsTextFile(nTriplesDirectoryPath);
 
         sc.close();
     }
-
-
-    public static void oldVersion(String seqFileDirectoryPath, String nTriplesDirectoryPath) {
-
-        MicroDataExtraction microDataExtraction;
-        List<KeyValue> keyValueList;
-        List<String> statementList;
-
-        File seqFileDirectory = new File(seqFileDirectoryPath);
-        try {
-            int fileCount = 0;
-            File[] filesList = seqFileDirectory.listFiles();
-            String csvFilePath;
-            File csvFile;
-            //for (File seqFile : filesList) {
-            for (int k = 0; k < filesList.length; k++) {
-                File seqFile = filesList[k];
-
-                csvFilePath = new StringBuilder(nTriplesDirectoryPath)
-                        .append("\\").append(seqFile.getName().toString())
-                        .append(".csv").toString();
-                csvFile = new File(csvFilePath);
-                if (csvFile.exists()) {
-                    logger.info("Already Exist: file://" + csvFilePath);
-                    continue;
-                }
-                String filePath = seqFile.getPath();
-                String fileExtension = FilenameUtils.getExtension(filePath);
-                logger.info(fileExtension);
-                if (!fileExtension.equals("seq"))
-                    continue;
-                microDataExtraction = new MicroDataExtraction(new ArrayList<>());
-                try {
-                    keyValueList = FilesUtil.readSequenceFile(filePath);
-
-                } catch (Exception e) {
-                    e.printStackTrace();
-                    continue;
-                }
-                fileCount++;
-
-                for (int i = 0; i < keyValueList.size(); i++) {
-                    KeyValue keyValue = keyValueList.get(i);
-                    try {
-                        String nTriples =
-                                microDataExtraction.extractMicroData(keyValue.getValue());
-
-                        microDataExtraction.setStatements(keyValue.getKey(), nTriples);
-                    } catch (Exception e) {
-                        continue;
-                    }
-                }
-                statementList = microDataExtraction.getStatements();
-                logger.info(csvFilePath);
-                microDataExtraction.writeToFile(csvFile, statementList);
-                logger.info("Total Sequence Files Read: " + fileCount);
-            }
-        } catch (Exception e) {
-            logger.error(e.toString());
-        }
-    }
-
 }

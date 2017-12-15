@@ -1,129 +1,127 @@
 package ee.thesis.processSeqFiles.utils;
 
 
-import java.io.*;
-import java.util.Arrays;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Set;
-
 import org.apache.any23.Any23;
-import org.apache.any23.configuration.Configuration;
 import org.apache.any23.configuration.DefaultConfiguration;
-import org.apache.any23.configuration.DefaultModifiableConfiguration;
 import org.apache.any23.source.DocumentSource;
-import org.apache.any23.source.*;
+import org.apache.any23.source.StringDocumentSource;
 import org.apache.any23.writer.NTriplesWriter;
 import org.apache.any23.writer.TripleHandler;
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
 
-public class MicroDataExtraction implements Serializable {
-	List<String> statementsList;
+import java.io.ByteArrayOutputStream;
+import java.util.Arrays;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
 
-	private static final Logger logger = LogManager.getLogger(MicroDataExtraction.class);
-	
-	public MicroDataExtraction(List<String> statementsList){
-		this.statementsList=statementsList;
-	}
-	
-	public String extractMicroData(String htmlContents) throws Exception{
-		
-		logger.debug("In extracting microdata.");
+/*
+* Created by Madis-Karli Koppel and Khalil Rehman
+* Extracts ntriples from strings (Html and xml files)
+*/
+public class MicroDataExtraction {
 
-		DefaultConfiguration cf = DefaultConfiguration.singleton();
-		Any23 runner = new Any23("html-microdata");
+    private static final Logger logger = LogManager.getLogger(MicroDataExtraction.class);
 
-		File file=createTempFile(htmlContents); 
-		
-		DocumentSource source= new FileDocumentSource(file);
-		logger.debug("Document source created.");
-		
-		ByteArrayOutputStream out = new ByteArrayOutputStream();
-		TripleHandler handler = new NTriplesWriter(out);
-		logger.debug("Triple handler occupied.");
-		String result ="";
-		      try {
-				  logger.debug("Extracting microdata.");
-		    	  runner.extract(source, handler);
-		    	  result = out.toString("UTF-8");
-				  logger.debug(result);
-		      }
-		      finally {		
-		    	 handler.close();		    	 
-		      }
-		
-		
-		if(!result.isEmpty())
-			return removeDuplicateTriples(result);
-		else
-			throw new Exception();
-		//return result;				
-	}
+    List<String> statementsList;
 
-	private String removeDuplicateTriples(String result) {
-		String[] tripleStatements=result.split("\\\n");
-		Set<String> triplesSet=new LinkedHashSet<String>(Arrays.asList(tripleStatements));
-		String uResult="";
-		for(String statement:triplesSet){
-			uResult+=statement+"\n";
-		}
-		logger.debug(uResult);
-		return uResult;		 
-	}
+    /*
+     * Actual workhorse of this application. This is the part that extracts ntriples
+     * @param string contents - string containing html or xml data, not verified
+     * @return string ntriples - can return several, each ntriple on new line
+     */
+    public String extractMicroData(String contents) throws Exception {
 
-	private File createTempFile(String htmlContents) throws IOException {
-		String filePath="data.html";
-		File temp = new File(filePath);
-		//File temp = File.createTempFile("data", ".html");	
-		FileWriter fileWriter=new FileWriter(temp, false);
-		fileWriter.write(htmlContents);
-	    //BufferedWriter fileWriter = new BufferedWriter(new FileWriter(temp));
-	    fileWriter.write(htmlContents);
-		fileWriter.flush();
-		fileWriter.close();	    
-		return temp;
-	}
+        logger.debug("In extracting microdata.");
 
-	public void setStatements(String key, String result) {
-		String[] statements=result.split("(\\s\\.)(\\r?\\n)");
-		StringBuilder stat=null;
-		for(String statement: statements){
-			stat=new StringBuilder("");
-			logger.debug(statement);
-			String[] statParts=statement.split("\\s(<|\"|_)");
-		
-			String subject=statParts[0].replaceAll("(<|>|\")", "");
-			String predicate=statParts[1].replaceAll("(<|>|\")", "");
-			String object=statParts[2].replaceAll("(<|>|\")", "");
-			
-			stat.append("<"+key+">, ").append("<"+subject+">, ")
-				.append("<"+predicate+">, ").append("<"+object+">");
-			statementsList.add(stat.toString());
-			//logger.debug(stat.toString());
-		}
-	}
-	
-	public List<String> getStatements(){
-		return statementsList;
-	}
+        Any23 runner = new Any23("html-microdata");
 
-	public void writeToFile(File file, List<String> statList) throws IOException {
-		
-		//File file=new File(csvFilePath);
-		File directory=new File(file.getParent());
-		
-		if(!directory.exists())
-			directory.mkdirs();
-		
-		FileWriter fileWriter=new FileWriter(file);
-		for(String statement:statList){
-			fileWriter.write(statement);
-			fileWriter.write("\n");
-		}
-		fileWriter.flush();
-		fileWriter.close();	
-		
-	}
+        // uri needs be <string>:<string> or it will not work
+        DocumentSource source = new StringDocumentSource(contents, "java:MicroDataExtraction");
+
+        // handler writes ntriples into bytearrayoutputstream
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        TripleHandler handler = new NTriplesWriter(out);
+
+        logger.debug("Triple handler occupied.");
+        String result = "";
+
+        try {
+            logger.debug("Extracting microdata.");
+
+            runner.extract(source, handler);
+
+            logger.debug(result);
+        } catch (Exception e) {
+            logger.debug(e.getMessage());
+        } finally {
+            handler.close();
+        }
+
+        // This needs to be here, not in try, otherwise some triples are lost
+        // store any23 results in result String, ntriples are separated by newline
+        result = out.toString();
+
+        if (!result.isEmpty()) {
+            return removeDuplicateTriples(result);
+        } else
+            throw new Exception();
+    }
+
+
+    /*
+     * Removes duplicate ntriples using Set
+     * @param string nTriples - nTriples, separated by newline
+     * @return string nTriples - nTriples without duplicates, separated by newline
+     */
+    private String removeDuplicateTriples(String nTriples) {
+        String[] tripleStatements = nTriples.split("\\\n");
+        Set<String> triplesSet = new LinkedHashSet<String>(Arrays.asList(tripleStatements));
+        String uResult = "";
+        for (String statement : triplesSet) {
+            uResult += statement + "\n";
+        }
+        logger.debug(uResult);
+        return uResult;
+    }
+
+    /*
+     * Convert ntiples into n-quads
+     * n-quads are stored in field statementsList
+     * @param string key - the key from warc file containing triple location and date of extraction
+     * @param string nTriples - ntriples, several, separated by new line
+     */
+    public void setStatements(String key, String nTriples) {
+        String[] statements = nTriples.split("(\\s\\.)(\\r?\\n)");
+        StringBuilder stat;
+
+        for (String statement : statements) {
+
+            stat = new StringBuilder("");
+
+            String[] statParts = statement.split("\\s(<|\"|_)");
+
+            String subject = statParts[0].replaceAll("(<|>|\")", "");
+            String predicate = statParts[1].replaceAll("(<|>|\")", "");
+            String object = statParts[2].replaceAll("(<|>|\")", "");
+
+            stat.append("<" + key + ">, ").append("<" + subject + ">, ")
+                    .append("<" + predicate + ">, ").append("<" + object + ">");
+
+            statementsList.add(stat.toString());
+
+            logger.debug(statement);
+            logger.debug(stat.toString());
+        }
+    }
+
+    public MicroDataExtraction(List<String> statementsList) {
+        this.statementsList = statementsList;
+    }
+
+    public List<String> getStatements() {
+        return statementsList;
+    }
 
 }
