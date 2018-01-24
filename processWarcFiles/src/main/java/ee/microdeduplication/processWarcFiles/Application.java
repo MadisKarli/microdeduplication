@@ -6,6 +6,7 @@ import ee.microdeduplication.processWarcFiles.utils.spark.MapToPairFunction;
 import nl.surfsara.warcutils.WarcInputFormat;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.io.LongWritable;
+import org.apache.hadoop.io.Text;
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
 import org.apache.spark.SparkConf;
@@ -14,7 +15,6 @@ import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
 import org.jwat.warc.WarcRecord;
-
 
 /*
 * Created by Khalil Rehman (base) and Madis-Karli Koppel (converted to Spark)

@@ -15,7 +15,7 @@ public class ExtractMicrodataFlatMapFunction implements FlatMapFunction<Tuple2<S
 
     private static final Logger logger = LogManager.getLogger(ExtractMicrodataFlatMapFunction.class);
 
-    public Iterable<String> call(Tuple2<String, String> tuple2) throws Exception {
+    public Iterable<String> call(Tuple2<String, String> tuple2) {
 
         MicroDataExtraction microDataExtraction = new MicroDataExtraction(new ArrayList<String>());
 
