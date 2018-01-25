@@ -1,9 +1,10 @@
 package ee.thesis.models;
 
-import java.util.HashMap;
+import scala.Serializable;
+
 import java.util.Map;
 
-public class Entity {
+public class Entity implements Serializable {
     public String type;
     public String url;
     // maybe not needed at all
