@@ -1,6 +1,6 @@
 package ee.microdeduplication.processWarcFiles;
 
-import ee.microdeduplication.processWarcFiles.utils.spark.ExtractMicrodataFlatMapFunction;
+import ee.microdeduplication.processWarcFiles.utils.spark.ExtractMicrodataPairFlatMapFunction;
 import ee.microdeduplication.processWarcFiles.utils.spark.IgnoreMetadataFunction;
 import ee.microdeduplication.processWarcFiles.utils.spark.MapToPairFunction;
 import nl.surfsara.warcutils.WarcInputFormat;
@@ -12,7 +12,6 @@ import org.apache.log4j.Logger;
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaNewHadoopRDD;
 import org.apache.spark.api.java.JavaPairRDD;
-import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
 import org.jwat.warc.WarcRecord;
 
@@ -81,16 +80,15 @@ public class Application {
         // Ignore metadata files - they are big (1 GB) and reading them takes too much time
         JavaPairRDD<String, String> warcsWithoutMetadata =
                 warcRecords
-                        .mapPartitionsWithInputSplit(new IgnoreMetadataFunction(), true)
+                        .mapPartitionsWithInputSplit(new IgnoreMetadataFunction(), false)
                         .mapToPair(new MapToPairFunction());
 
-
         // Extract ntriples from warc files
-        JavaRDD<String> ntriples =
-                warcsWithoutMetadata.
-                        flatMap(new ExtractMicrodataFlatMapFunction());
+        JavaPairRDD<String, String> ntriples =
+                warcsWithoutMetadata
+                        .flatMapToPair(new ExtractMicrodataPairFlatMapFunction());
 
-        ntriples.saveAsTextFile(nTriplesDirectoryPath);
+        ntriples.saveAsNewAPIHadoopFile(nTriplesDirectoryPath, Text.class, Text.class, org.apache.hadoop.mapreduce.lib.output.TextOutputFormat.class, hadoopconf);
 
         sc.close();
     }

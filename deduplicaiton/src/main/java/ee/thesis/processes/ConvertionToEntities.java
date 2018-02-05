@@ -1,9 +1,6 @@
 package ee.thesis.processes;
 
-import java.util.*;
-
-import ee.thesis.Application;
-import ee.thesis.models.Entity;
+import ee.thesis.utils.Util;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.io.LongWritable;
 import org.apache.hadoop.io.Text;
@@ -15,13 +12,9 @@ import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.api.java.function.Function;
-
-import ee.thesis.utils.Util;
-import org.apache.spark.api.java.function.PairFunction;
 import scala.Tuple2;
-import scala.Tuple3;
 
-import static java.lang.Thread.sleep;
+import java.util.HashMap;
 
 public class ConvertionToEntities {
     private static long count = 1;
@@ -65,115 +58,6 @@ public class ConvertionToEntities {
                     }
                 });
 
-
-        JavaRDD<String> moreEntities2 = lines.map(new Function<Tuple2<LongWritable, Text>, String>() {
-            @Override
-            public String call(Tuple2<LongWritable, Text> t2) {
-//                logger.error(t2._1.toString());
-                return t2._2.toString();
-            }
-        });
-
-
-        final String[] targets = {
-                ".org/Offer", "Product/name", "Offer/itemOffered", "Product/image", "Offer/image", "Offer/price", "Product/price", "Offer/priceCurrency", "Offer/currency", "Product/currency", "Product/description", "Offer/description", "Product/url", "Product/sku", "Offer/availability"
-        };
-
-        JavaRDD<String> nokid = ctx.textFile(args[0]);
-
-
-        JavaPairRDD<String, Tuple3<String, String, String>> ab = nokid
-                .filter(new Function<String, Boolean>() {
-                    @Override
-                    public Boolean call(String s) {
-                        return s.contains("schema.org");
-//                        return inList(s, targets);
-                    }
-                })
-                .mapToPair(new PairFunction<String, String, Tuple3<String, String, String>>() {
-                    @Override
-                    public Tuple2<String, Tuple3<String, String, String>> call(String s) {
-                        s = s.substring(1, s.length() - 1);
-                        String[] s0 = s.split(">, <");
-
-                        assert s0.length == 4;
-
-                        return new Tuple2<>(s0[1], new Tuple3<>(s0[0], s0[2] , s0[3]));
-                    }
-                });
-
-        ab.groupByKey()
-                .map(
-                new Function<Tuple2<String,Iterable<Tuple3<String,String,String>>>, Object>() {
-                    @Override
-                    public Object call(Tuple2<String, Iterable<Tuple3<String, String, String>>> tuple2) {
-                        // Structure: id, tuple3
-                        // tuple3: siteUrl, RDF type, RDF value ? is RDF correct here?
-                        
-                        String id = tuple2._1();
-                        
-                        Iterator<Tuple3<String, String, String>> it = tuple2._2.iterator();
-
-                        SortedSet<String> urls = new TreeSet();
-                        Map<String, String> currentFields = new HashMap<String, String>();
-                        String type = "";
-
-                        while(it.hasNext()){
-                            Tuple3<String, String, String> tuple3 = it.next();
-
-                            urls.add(tuple3._1());
-
-                            String _key = tuple3._2();
-                            String key;
-
-                            // TODO make more readable
-                            // sometimes they tell us the type of entity then there is no point in parsing ourself
-                            // http://www.w3.org/1999/02/22-rdf-syntax-ns#type
-                            if (_key.contains("22-rdf-syntax-ns#type")){
-                                type = tuple3._3();
-                            }
-                            else {
-                                key = _key.substring(_key.lastIndexOf("/") + 1, _key.length());
-
-                                // checks for repetition - we do not want duplicate keys
-                                if (currentFields.containsKey(key)){
-//                                    logger.debug("Duplicate RDF type " + key + " in " + tuple3._1()  + ", id=" + id);
-
-                                    // TODO better solution
-                                    String old = currentFields.get(key);
-                                    currentFields.put(key, old + "," + tuple3._3());
-                                } else{
-                                    currentFields.put(key, tuple3._3());
-                                }
-                            }
-                        }
-
-                        if (type.isEmpty()){
-                            // types are as an URL, example http://schema.org/Product/description
-                            String _type = tuple2._2.iterator().next()._2();
-                            type = _type.substring(0, _type.lastIndexOf("/"));
-                        }
-
-                        
-                        // checks that our RDF is from only one URL
-                        if (urls.size() != 1) logger.error("too many urls in: " + id + " " + urls);
-
-                        Entity entity = new Entity();
-                        entity.url = urls.first();
-                        entity.any23id = id;
-                        entity.type = type;
-
-                        entity.fields = currentFields;
-                        System.out.println(entity);
-                        System.out.println("------------");
-
-                        return null;
-                    }
-                }
-        ).collect();
-
-
-        // moreEntities2 is ok but loses some info
 
         JavaRDD<String> entity = bLines.map(new Function<String, String>() {
 
@@ -306,15 +190,6 @@ public class ConvertionToEntities {
         });
 
         entity.saveAsTextFile(args[1]);
-    }
-
-    public static boolean inList(String inputStr, String[] items) {
-        for (int i = 0; i < items.length; i++) {
-            if (inputStr.contains(items[i])) {
-                return true;
-            }
-        }
-        return false;
     }
 
 }

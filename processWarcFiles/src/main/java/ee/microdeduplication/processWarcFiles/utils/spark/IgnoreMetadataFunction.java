@@ -7,9 +7,11 @@ import org.apache.hadoop.mapreduce.lib.input.FileSplit;
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
 import org.apache.spark.api.java.function.Function2;
+import org.jwat.common.HeaderLine;
 import org.jwat.warc.WarcRecord;
 import scala.Tuple2;
 
+import java.io.InputStream;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.Iterator;
@@ -46,16 +48,25 @@ public class IgnoreMetadataFunction implements Function2<InputSplit, Iterator<Tu
 
         while (dataIterator.hasNext()) {
 
+            logger.info("processing " + fileLocation);
+
             Tuple2<LongWritable, WarcRecord> next = dataIterator.next();
             WarcRecord warcRecord = next._2;
 
             // Filter warcRecords that contain crawl data, no win in time
-//            if(!filter(warcRecord))
-//                continue;
+            if (!filter(warcRecord))
+                continue;
 
-            String payload = IOUtils.toString(warcRecord.getPayload().getInputStream());
+            String payload = "";
 
             try {
+                InputStream payloadStream = warcRecord.getPayload().getInputStream();
+
+                payload = IOUtils.toString(payloadStream);
+
+                payloadStream.close();
+
+
                 // Construct the ID as it was in nutch, example:
                 // http::g.delfi.ee::/s/img/back_grey.gif::null::20150214090921
                 URL url = new URL(warcRecord.getHeader("WARC-Target-URI").value);
@@ -74,6 +85,9 @@ public class IgnoreMetadataFunction implements Function2<InputSplit, Iterator<Tu
                 retList.add(new Tuple2<String, String>("null", payload));
             } catch (MalformedURLException e) {
                 retList.add(new Tuple2<String, String>("null", payload));
+            } catch (OutOfMemoryError e) {
+                logger.error("Exception when processing " + fileLocation);
+                logger.error(e.getMessage());
             }
         }
         return retList.iterator();
@@ -87,10 +101,35 @@ public class IgnoreMetadataFunction implements Function2<InputSplit, Iterator<Tu
             return false;
         }
 
+
         // Ignore WARC specific content and DNS files
         if (header.equals("application/warc-fields")) return false;
 
         if (header.equals("text/dns")) return false;
+
+        // TODO make sure to also collect xml files
+        if (!header.contains("application/http")) return false;
+
+        // Ignore warcs that are bigger than 100 megabytes - they tend to run out of memory
+        // too much, should be decreased as executors are still killed with it --executor-memory 6g
+        String len_s = warcRecord.getHeader("Content-Length").value;
+        int len;
+
+        try {
+            len = Integer.valueOf(len_s);
+        } catch (NumberFormatException e) {
+            return false;
+        }
+
+        if (len > 100000000) {
+            System.out.println(len);
+            return false;
+        }
+
+//        for (HeaderLine hl: warcRecord.getHeaderList()){
+//            System.out.println(hl.name + " " + hl.value);
+//            System.out.println("---------------------------");
+//        }
 
         return true;
     }

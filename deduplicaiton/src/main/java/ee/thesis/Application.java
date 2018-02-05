@@ -1,5 +1,6 @@
 package ee.thesis;
 
+import ee.thesis.processes.RDFStatistics;
 import org.apache.commons.lang.ArrayUtils;
 
 import ee.thesis.processes.ConvertionToEntities;
@@ -33,6 +34,10 @@ public class Application {
             else if(args[0].trim().toLowerCase().equals("evaluation")){
                 args=(String[]) ArrayUtils.removeElement(args, args[0]);
                 EvaluateDeduplication.evaluate(args);
+            }
+            else if(args[0].trim().toLowerCase().equals("statistics")){
+                args=(String[]) ArrayUtils.removeElement(args, args[0]);
+                RDFStatistics.countGroups(args);
             }
         }catch(Exception ex){
             System.out.println(ex.getMessage());
