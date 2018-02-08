@@ -4,10 +4,10 @@
 
     <groupId>ee.thesis</groupId>
     <artifactId>processWarcFiles</artifactId>
-    <version>0.1</version>
+    <version>0.1-statistics</version>
     <packaging>jar</packaging>
 
-    <name>processSeqFiles</name>
+    <name>processWarcFiles</name>
     <url>http://maven.apache.org</url>
 
     <properties>

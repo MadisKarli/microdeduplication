@@ -96,6 +96,15 @@ public class RDFStatistics {
                             key = key.substring(0, key.lastIndexOf("/"));
                             return new Tuple2<>(key, 1);
                         } else if (key.contains("purl.org")) {
+                            key = key.substring(0, key.lastIndexOf("/"));
+                            return new Tuple2<>(key, 1);
+                        } else if (key.contains("nik.io")) {
+                            key = key.substring(0, key.lastIndexOf("/"));
+                            return new Tuple2<>(key, 1);
+                        } else if (key.contains("mesilakinnisvara.ee")) {
+                            // find second from last index
+                            key = key.substring(0, key.lastIndexOf("/"));
+                            key = key.substring(0, key.lastIndexOf("/"));
                             return new Tuple2<>(key, 1);
                         } else {
                             logger.error("Unknown RDF url "  + key);

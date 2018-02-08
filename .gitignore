@@ -2,3 +2,17 @@
 target/
 
 *.iml
+
+deduplicaiton/keys/
+
+benchmark_datasets\.png
+
+benchmark_runtime1\.png
+
+benchmark_runtime2\.png
+
+benchmark_runtime3\.png
+
+benchmark\.png
+
+rdf stores\.png

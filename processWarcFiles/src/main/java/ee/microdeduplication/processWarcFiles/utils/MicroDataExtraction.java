@@ -55,14 +55,21 @@ public class MicroDataExtraction {
             logger.debug(result);
         } catch (Exception e) {
             logger.error(e.getMessage());
-            out.close();
-        } catch (OutOfMemoryError e){
+        } catch (Error e) {
             logger.error(e.getMessage());
         }
 
-        // This needs to be here, not in try, otherwise some triples are lost
-        // store any23 results in result String, ntriples are separated by newline
-        result = out.toString();
+        // TODO is the try needed at all?
+        try {
+            // This needs to be here, not in try, otherwise some triples are lost
+            // store any23 results in result String, ntriples are separated by newline
+            result = out.toString();
+
+        } catch (Exception e) {
+            logger.error(e.getMessage());
+        } catch (Error e) {
+            logger.error(e.getMessage());
+        }
 
         out.close();
         handler.close();
