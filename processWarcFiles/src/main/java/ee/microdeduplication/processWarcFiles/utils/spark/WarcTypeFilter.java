@@ -39,7 +39,7 @@ public class WarcTypeFilter implements Function2<InputSplit, Iterator<Tuple2<Lon
 
 
     public Iterator<Tuple2<String, Integer>> call(InputSplit arg0,
-                                                 Iterator<Tuple2<LongWritable, WarcRecord>> dataIterator) throws Exception {
+                                                 Iterator<Tuple2<LongWritable, WarcRecord>> dataIterator) {
 
         FileSplit fileSplit = (FileSplit) arg0;
 
@@ -51,6 +51,8 @@ public class WarcTypeFilter implements Function2<InputSplit, Iterator<Tuple2<Lon
 
         String[] nameParts = fileLocation.split("/");
 
+        // TODO kas selle jubeduse asemel ei ole mõtet lihtsalt vaadata
+        // if uri.contains metadata nagu text extractionis?
         if (nameParts[nameParts.length - 1].contains("metadata")) {
             logger.debug("igore metadata file " + fileLocation);
             return skipcounts.iterator();

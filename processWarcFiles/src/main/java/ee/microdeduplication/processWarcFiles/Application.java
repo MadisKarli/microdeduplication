@@ -121,6 +121,7 @@ public class Application {
 
         System.out.println("total skipped: " + skipCount);
 
+        warcsWithoutMetadata.coalesce(1).saveAsTextFile(nTriplesDirectoryPath);
 
 //        maybe not needed at all?
 //        warcsWithoutMetadata.persist(StorageLevel.DISK_ONLY());
