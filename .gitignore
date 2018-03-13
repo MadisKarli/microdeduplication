@@ -2,3 +2,7 @@
 target/
 
 *.iml
+
+deduplicaiton/keys/
+
+pictures/

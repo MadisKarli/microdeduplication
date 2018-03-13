@@ -28,6 +28,9 @@ public class IgnoreMetadataFunction implements Function2<InputSplit, Iterator<Tu
 
     private static final Logger logger = LogManager.getLogger(IgnoreMetadataFunction.class);
 
+    private static final int LEN_LIMIT_TEXT = 13000000;
+    private static final int LEN_LIMIT_OTHER = 0;
+
 
     public Iterator<Tuple2<String, String>> call(InputSplit arg0,
                                                  Iterator<Tuple2<LongWritable, WarcRecord>> dataIterator) throws Exception {
@@ -54,7 +57,7 @@ public class IgnoreMetadataFunction implements Function2<InputSplit, Iterator<Tu
             WarcRecord warcRecord = next._2;
 
             // Filter warcRecords that contain crawl data, no win in time
-            if (!filter(warcRecord))
+            if (!filterSize(warcRecord))
                 continue;
 
             String payload = "";
@@ -65,7 +68,6 @@ public class IgnoreMetadataFunction implements Function2<InputSplit, Iterator<Tu
                 payload = IOUtils.toString(payloadStream);
 
                 payloadStream.close();
-
 
                 // Construct the ID as it was in nutch, example:
                 // http::g.delfi.ee::/s/img/back_grey.gif::null::20150214090921
@@ -93,7 +95,8 @@ public class IgnoreMetadataFunction implements Function2<InputSplit, Iterator<Tu
         return retList.iterator();
     }
 
-    private static boolean filter(WarcRecord warcRecord) {
+    // TODO refactor as size is no longer checked
+    private static boolean filterSize(WarcRecord warcRecord) {
         String header = "";
         try {
             header = warcRecord.getHeader("Content-Type").value;
@@ -107,11 +110,11 @@ public class IgnoreMetadataFunction implements Function2<InputSplit, Iterator<Tu
 
         if (header.equals("text/dns")) return false;
 
-        // TODO make sure to also collect xml files
         if (!header.contains("application/http")) return false;
 
-        // Ignore warcs that are bigger than 100 megabytes - they tend to run out of memory
-        // too much, should be decreased as executors are still killed with it --executor-memory 6g
+        // Ignore warcs that are too big
+        // There are two limits - for text files and for other files
+        // Microdata extraction from text files is
         String len_s = warcRecord.getHeader("Content-Length").value;
         int len;
 
@@ -121,18 +124,49 @@ public class IgnoreMetadataFunction implements Function2<InputSplit, Iterator<Tu
             return false;
         }
 
-        if (len > 100000000) {
-            System.out.println(len);
-            return false;
+        // Set default target to that of non text files
+        int target = LEN_LIMIT_OTHER;
+
+        // Start checking if we can change it to text file target
+        // html files can be represented as
+        // text/html
+        // application/http
+        // application/xhtml+xml
+        if (header.contains("http")){
+            target = LEN_LIMIT_TEXT;
         }
 
-//        for (HeaderLine hl: warcRecord.getHeaderList()){
-//            System.out.println(hl.name + " " + hl.value);
-//            System.out.println("---------------------------");
+        // XML files also contain info
+        // application/xhtml+xml
+        // application/rss+xml
+        // application/rdf+xml
+        if (header.contains("xml")){
+            target = LEN_LIMIT_TEXT;
+        }
+
+        // json files can contain microdata
+        if (header.contains("json")){
+            logger.error("json file " + header);
+            target = LEN_LIMIT_TEXT;
+        }
+
+        // parsing text files is fast and most of the time
+        // text/plain has been mistaken for text/html
+        // text/html
+        if (header.startsWith("text")){
+            target = LEN_LIMIT_TEXT;
+        }
+
+//        if (len > target) {
+//            logger.error("Ignoring Warc record due to size: " + len +"|" + target + " " + header);
+//            return false;
 //        }
+
+        if (target != LEN_LIMIT_TEXT){
+            logger.info("Ignoring Warc record as it is not a text file");
+            return false;
+        }
 
         return true;
     }
 }
-
-

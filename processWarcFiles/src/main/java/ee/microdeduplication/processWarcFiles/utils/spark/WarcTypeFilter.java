@@ -12,7 +12,7 @@ import java.io.Serializable;
  */
 public class WarcTypeFilter implements Function<Tuple2<LongWritable, WarcRecord>, Boolean>, Serializable {
 
-    public Boolean call(Tuple2<LongWritable, WarcRecord> s) throws Exception {
+    public Boolean call(Tuple2<LongWritable, WarcRecord> s) {
         String header = "";
 
         /*

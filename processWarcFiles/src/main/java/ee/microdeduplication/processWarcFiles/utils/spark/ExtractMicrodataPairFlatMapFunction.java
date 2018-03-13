@@ -18,22 +18,18 @@ public class ExtractMicrodataPairFlatMapFunction implements PairFlatMapFunction<
 
 
     @Override
-    public Iterable<Tuple2<String, String>> call(Tuple2<String, String> tuple2)  {
+    public Iterable<Tuple2<String, String>> call(Tuple2<String, String> tuple2) {
         MicroDataExtraction microDataExtraction = new MicroDataExtraction(new ArrayList<String>());
 
-        try {
-            String nTriples = microDataExtraction.extractMicroData(tuple2._2);
+        String nTriples = microDataExtraction.extractMicroData(tuple2._1, tuple2._2);
 
-            microDataExtraction.setStatements(tuple2._1, nTriples);
+        microDataExtraction.setStatements(tuple2._1, nTriples);
 
-            logger.debug("extracted statements " + microDataExtraction.getStatements());
-        } catch (Exception e) {
-            return new ArrayList<Tuple2<String, String>>();
-        }
+        logger.debug("extracted statements " + microDataExtraction.getStatements());
 
         List out = new ArrayList<Tuple2<String, String>>();
 
-        for (String statement: microDataExtraction.getStatements()){
+        for (String statement : microDataExtraction.getStatements()) {
             out.add(new Tuple2(tuple2._1, statement));
         }
 
