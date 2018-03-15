@@ -57,20 +57,25 @@ public class MicroDataExtraction {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         TripleHandler handler = new NTriplesWriter(out);
 
+
         logger.debug("Triple handler occupied.");
         String result = "";
 
         try {
             logger.debug("Extracting microdata.");
             runner.extract(source, handler);
+//            throw new ExtractionException("s");
         } catch (ExtractionException e) {
+            // org.apache.any23.extractor.ExtractionException: Error while processing on subject '_:node1a83b68da17a5c2fd93c11217f74d4c' the itemProp: '{ "xpath" : "/HTML[1]/BODY[1]/DIV[3]/FORM[1]/INPUT[1]", "name" : "query-input", "value" : { "content" : "Null", "type" : "Link" } }'
             logger.debug(e.getMessage());
             logger.debug("ExtractionException " + key);
+            return "EXCEPTION:ExtractionException";
         } catch (java.nio.charset.UnsupportedCharsetException e) {
             // Charset IBM424_rtl is not supported
             // at org.apache.any23.extractor.html.TagSoupParser.<init>(TagSoupParser.java:83)
             logger.debug(e.getMessage());
             logger.debug("UnsupportedCharsetException " + key);
+            return "EXCEPTION:UnsupportedCharsetException";
         } catch (RuntimeException e) {
             // TODO change to logger.debug
             // Error while retrieving mime type.
@@ -79,15 +84,19 @@ public class MicroDataExtraction {
             // at org.apache.commons.csv.CSVParser.encapsulatedTokenLexer(CSVParser.java:510)
             logger.debug(e.getMessage());
             logger.debug("Unknown exception " + key);
+            return "EXCEPTION:RuntimeException";
         } catch (Exception e) {
             e.printStackTrace();
             logger.error("Unknown exception " + key);
             logger.error(e.getMessage());
+            return "EXCEPTION:Exception";
         } catch (OutOfMemoryError e) {
             logger.error("OutOfMemoryError " + key);
             logger.error(e.getMessage());
+            return "EXCEPTION:OutOfMemoryError";
         } catch (StackOverflowError e) {
             logger.error("StackOverflowError " + key);
+            return "EXCEPTION:StackOverflowError";
         } finally {
             try {
                 out.close();
@@ -144,12 +153,20 @@ public class MicroDataExtraction {
 
         for (String statement : statements) {
 
-            if (statement.length() == 0)
-                    continue;
+            if (statement.length() == 0) {
+                continue;
+            }
 
             stat = new StringBuilder("");
 
             String[] statParts = statement.split("\\s(<|\"|_)");
+
+            // TODO wonderful case that could be caught
+//            try{
+//                String check = statParts[0] + statParts[1] + statParts[2];
+//            } catch (ArrayIndexOutOfBoundsException e){
+//                continue;
+//            }
 
             String subject = statParts[0].replaceAll("(<|>|\")", "");
             String predicate = statParts[1].replaceAll("(<|>|\")", "");

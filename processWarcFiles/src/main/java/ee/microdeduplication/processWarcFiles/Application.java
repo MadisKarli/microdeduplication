@@ -1,10 +1,12 @@
 package ee.microdeduplication.processWarcFiles;
 
+import com.twitter.chill.Tuple4Serializer;
 import ee.microdeduplication.processWarcFiles.utils.spark.ExtractMicrodataPairFlatMapFunction;
-import ee.microdeduplication.processWarcFiles.utils.spark.IgnoreMetadataFunction;
+import ee.microdeduplication.processWarcFiles.utils.spark.IgnoreFunction;
 import ee.microdeduplication.processWarcFiles.utils.spark.MapToPairFunction;
 import nl.surfsara.warcutils.WarcInputFormat;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.io.LongWritable;
 import org.apache.hadoop.io.Text;
 import org.apache.log4j.LogManager;
@@ -12,8 +14,13 @@ import org.apache.log4j.Logger;
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaNewHadoopRDD;
 import org.apache.spark.api.java.JavaPairRDD;
+import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
+import org.apache.spark.api.java.function.PairFunction;
 import org.jwat.warc.WarcRecord;
+import scala.Tuple2;
+import scala.Tuple4;
+import scala.Tuple5;
 
 /*
 * Created by Khalil Rehman (base) and Madis-Karli Koppel (converted to Spark)
@@ -77,18 +84,27 @@ public class Application {
         JavaNewHadoopRDD<LongWritable, WarcRecord> warcRecords =
                 (JavaNewHadoopRDD<LongWritable, WarcRecord>) sc.newAPIHadoopFile(warcFileDirectoryPath, WarcInputFormat.class, LongWritable.class, WarcRecord.class, hadoopconf);
 
+        // url, mime/type, size, exception(s), # of triples
         // Ignore metadata files - they are big (1 GB) and reading them takes too much time
-        JavaPairRDD<String, String> warcsWithoutMetadata =
-                warcRecords
-                        .mapPartitionsWithInputSplit(new IgnoreMetadataFunction(), false)
-                        .mapToPair(new MapToPairFunction());
+//        JavaPairRDD<String, String, Integer, String, Integer> warcsWithoutMetadata =
+//                warcRecords
+//                        .mapPartitionsWithInputSplit(new IgnoreFunction(), false)
+//                        .mapToPair(new MapToPairFunction());
+
+        JavaRDD<Tuple5<String, String, Integer, String, Integer>> warcsWithoutMetadata = warcRecords.mapPartitionsWithInputSplit(new IgnoreFunction(), false);
+
 
         // Extract ntriples from warc files
-        JavaPairRDD<String, String> ntriples =
+        JavaRDD<Tuple5<String, String, Integer, String, Integer>> ntriples =
                 warcsWithoutMetadata
-                        .flatMapToPair(new ExtractMicrodataPairFlatMapFunction());
+                        .map(new ExtractMicrodataPairFlatMapFunction());
 
-        ntriples.saveAsNewAPIHadoopFile(nTriplesDirectoryPath, Text.class, Text.class, org.apache.hadoop.mapreduce.lib.output.TextOutputFormat.class, hadoopconf);
+        for (Tuple5<String, String, Integer, String, Integer> row: ntriples.take(5)){
+            System.out.println(row);
+        }
+
+
+        ntriples.saveAsTextFile(nTriplesDirectoryPath);
 
         sc.close();
     }
