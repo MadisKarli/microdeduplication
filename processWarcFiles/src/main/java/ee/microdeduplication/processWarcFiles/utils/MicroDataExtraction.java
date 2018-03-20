@@ -161,12 +161,11 @@ public class MicroDataExtraction {
 
             String[] statParts = statement.split("\\s(<|\"|_)");
 
-            // TODO wonderful case that could be caught
-//            try{
-//                String check = statParts[0] + statParts[1] + statParts[2];
-//            } catch (ArrayIndexOutOfBoundsException e){
-//                continue;
-//            }
+            try{
+                String check = statParts[0] + statParts[1] + statParts[2];
+            } catch (ArrayIndexOutOfBoundsException e){
+                continue;
+            }
 
             String subject = statParts[0].replaceAll("(<|>|\")", "");
             String predicate = statParts[1].replaceAll("(<|>|\")", "");

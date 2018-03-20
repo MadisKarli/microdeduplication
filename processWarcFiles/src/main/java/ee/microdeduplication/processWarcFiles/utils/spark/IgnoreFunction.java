@@ -87,7 +87,7 @@ public class IgnoreFunction implements Function2<InputSplit, Iterator<Tuple2<Lon
             }
 
 
-            SimpleTuple typeFilter = filterHttpHeader(httpHeader);
+            SimpleTuple typeFilter = filterHttpHeader(httpHeader, fileLocation, warcRecord);
             if (typeFilter.comment != null){
                 retList.add(new Tuple5<String, String, Integer, String, Integer>(fileLocation, typeFilter.mime, typeFilter.size, typeFilter.comment, -1));
                 continue;
@@ -123,7 +123,7 @@ public class IgnoreFunction implements Function2<InputSplit, Iterator<Tuple2<Lon
             } catch (NullPointerException e) {
                 // Most likely due to URL url = new URL(warcRecord.getHeader("WARC-Target-URI").value);
                 for (HeaderLine l: warcRecord.getHeaderList()){
-                    System.out.println(l.name + " " + l.value);
+//                    System.out.println(l.name + " " + l.value);
                 }
                 e.printStackTrace();
                 retList.add(new Tuple5<String, String, Integer, String, Integer>(fileLocation, mime, size, "NullPointerException when creating ID", -1));
@@ -148,7 +148,7 @@ public class IgnoreFunction implements Function2<InputSplit, Iterator<Tuple2<Lon
         try {
             header = warcRecord.getHeader("Content-Type").value;
         } catch (NullPointerException e) {
-            return new SimpleTuple("UNK", len, "NullPointerException when warc record Content-Type");
+            return new SimpleTuple("UNK", len, "NullPointerException when extracting warc record’s Content-Type");
         }
 
         // Ignore WARC specific content and DNS files
@@ -173,14 +173,14 @@ public class IgnoreFunction implements Function2<InputSplit, Iterator<Tuple2<Lon
     }
 
 
-    private static SimpleTuple filterHttpHeader(HttpHeader httpHeader) {
+    private static SimpleTuple filterHttpHeader(HttpHeader httpHeader, String key, WarcRecord warcRecord) {
         String header = "unk";
         int len = -1;
 
         try {
             header = httpHeader.getHeader("Content-Type").value;
         } catch (NullPointerException e) {
-            return new SimpleTuple(header, len, "NullPointerException when extracting Content-Type");
+            return new SimpleTuple(header, len, "NullPointerException when extracting httpHeader's Content-Type");
         }
 
 
@@ -190,9 +190,19 @@ public class IgnoreFunction implements Function2<InputSplit, Iterator<Tuple2<Lon
             String len_s = httpHeader.getHeader("Content-Length").value;
             len = Integer.valueOf(len_s);
         } catch (NumberFormatException e) {
-            return new SimpleTuple(header, -1, "NumberFormatException when extracting Content-Length");
+            return new SimpleTuple(header, -1, "NumberFormatException when extracting httpHeader's Content-Length");
         }catch (NullPointerException e) {
-            return new SimpleTuple("UNK", len, "NullPointerException when extracting Content-Length");
+            // TODO why does this happen?
+            logger.error("file " + key);
+            for (HeaderLine l: warcRecord.getHeaderList()){
+                logger.error(l.name + " " + l.value);
+            }
+            logger.error("**************************************");
+            for (HeaderLine l: httpHeader.getHeaderList()){
+                logger.error(l.name + " " + l.value);
+            }
+            logger.error("--------------------------------------");
+            return new SimpleTuple("UNK", len, "NullPointerException when extracting httpHeader's Content-Length");
         }
 
 
