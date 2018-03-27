@@ -2,6 +2,7 @@ package ee.microdeduplication.processWarcFiles.utils.spark;
 
 import ee.microdeduplication.processWarcFiles.utils.SimpleTuple;
 import org.apache.commons.io.IOUtils;
+import org.apache.commons.lang.StringEscapeUtils;
 import org.apache.hadoop.io.LongWritable;
 import org.apache.hadoop.mapreduce.InputSplit;
 import org.apache.hadoop.mapreduce.lib.input.FileSplit;
@@ -57,7 +58,7 @@ public class IgnoreFunction implements Function2<InputSplit, Iterator<Tuple2<Lon
 
         while (dataIterator.hasNext()) {
 
-            logger.info("processing " + fileLocation);
+            logger.trace("processing " + fileLocation);
 
             Tuple2<LongWritable, WarcRecord> next = dataIterator.next();
             WarcRecord warcRecord = next._2;
@@ -118,7 +119,7 @@ public class IgnoreFunction implements Function2<InputSplit, Iterator<Tuple2<Lon
 
                 String id = protocol + "::" + hostname + "::" + urlpath + "::" + param + "::" + dateString;
 
-                //TODO check the last number
+                // payload = payload.replaceAll("\\\\", "");
                 retList.add(new Tuple5<String, String, Integer, String, Integer>(id, mime, size, payload, -2));
             } catch (NullPointerException e) {
                 // Most likely due to URL url = new URL(warcRecord.getHeader("WARC-Target-URI").value);
@@ -186,23 +187,26 @@ public class IgnoreFunction implements Function2<InputSplit, Iterator<Tuple2<Lon
 
         // Ignore warcs that are too big
         // There are two limits - for text files and for other files
+        String len_s = null;
         try {
-            String len_s = httpHeader.getHeader("Content-Length").value;
+            len_s = warcRecord.getHeader("Content-Length").value;
             len = Integer.valueOf(len_s);
         } catch (NumberFormatException e) {
+            logger.error(len_s);
             return new SimpleTuple(header, -1, "NumberFormatException when extracting httpHeader's Content-Length");
         }catch (NullPointerException e) {
-            // TODO why does this happen?
-            logger.error("file " + key);
-            for (HeaderLine l: warcRecord.getHeaderList()){
-                logger.error(l.name + " " + l.value);
-            }
-            logger.error("**************************************");
-            for (HeaderLine l: httpHeader.getHeaderList()){
-                logger.error(l.name + " " + l.value);
-            }
-            logger.error("--------------------------------------");
-            return new SimpleTuple("UNK", len, "NullPointerException when extracting httpHeader's Content-Length");
+            len = 100;
+//            // TODO why does this happen?
+//            logger.error("file " + key);
+//            for (HeaderLine l: warcRecord.getHeaderList()){
+//                logger.error(l.name + " " + l.value);
+//            }
+//            logger.error("**************************************");
+//            for (HeaderLine l: httpHeader.getHeaderList()){
+//                logger.error(l.name + " " + l.value);
+//            }
+//            logger.error("--------------------------------------");
+            // return new SimpleTuple("UNK", len, "NullPointerException when extracting httpHeader's Content-Length");
         }
 
 
@@ -210,11 +214,6 @@ public class IgnoreFunction implements Function2<InputSplit, Iterator<Tuple2<Lon
         int target = LEN_LIMIT_OTHER;
 
         // Start checking if we can change it to text file target
-        // html files can be represented as
-        // text/html
-        // they should be
-        // application/http
-        // application/xhtml+xml
         if (header.contains("http")){
             target = LEN_LIMIT_TEXT;
         }
@@ -240,7 +239,7 @@ public class IgnoreFunction implements Function2<InputSplit, Iterator<Tuple2<Lon
         }
 
         if (len > target){
-            return new SimpleTuple(header, len, "Ignore due to file type size goal " + target);
+            //return new SimpleTuple(header, len, "Ignore due to file type size goal " + target);
         }
 
         return new SimpleTuple(header, len, null);

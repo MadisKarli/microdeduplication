@@ -99,12 +99,33 @@ public class Application {
                 warcsWithoutMetadata
                         .map(new ExtractMicrodataPairFlatMapFunction());
 
-        for (Tuple5<String, String, Integer, String, Integer> row: ntriples.take(5)){
-            System.out.println(row);
-        }
-
-
         ntriples.saveAsTextFile(nTriplesDirectoryPath);
+
+        int triples = 0;
+
+        for (Tuple5 i: ntriples.collect()){
+            int cnt2 = (Integer) i._5();
+            if (cnt2 > 0){
+                triples += cnt2;
+            }
+        }
+        logger.error("total triples");
+        logger.error(triples);
+
+
+        // 1032-1-20170821154232650-00002-ciblee_2015_netarchive.warc
+        //    438 with exceptions (number of triples)
+        // 19 534 without size exception - :O
+        // 104-1-20170818022359886-00003-ciblee_2015_netarchive.warc
+        // 1032-1-20170821154232650-00002-ciblee_2015_netarchive.warc
+        // 1034-1-20170821160700559-00002-ciblee_2015_netarchive.warc
+        //  5 077 with exceptions
+        // 43 344 without size exception (any 23 1.1)
+        // 47 548 without size exception (any 23 2.1)
+        // warcs 232
+        //     663 with exceptions
+        // 161 890 without size exceptions (any 23 1.1)
+        // 161 863 without size exceptions (any 23 2.1)
 
         sc.close();
     }

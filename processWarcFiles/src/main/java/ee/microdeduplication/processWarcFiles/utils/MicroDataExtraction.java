@@ -11,8 +11,6 @@ import org.apache.any23.writer.TripleHandlerException;
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
 import org.json4s.Extraction;
-import org.openrdf.model.Model;
-import org.openrdf.rio.*;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -45,7 +43,16 @@ public class MicroDataExtraction {
 
         logger.debug("In extracting microdata.");
 
+        // When setting the extractor to html-microdata we only get microdata such as schema.org etc
+        // when not defining it then we do get a lot of noise
+        // So we need to find correct extractors.
+        // 1.1 available:
+        // csv, html-head-icbm, html-head-links, html-head-title, html-mf-adr, html-mf-geo,
+        // html-mf-hcalendar, html-mf-hcard, html-mf-hlisting, html-mf-hrecipe, html-mf-hresume, html-mf-hreview,
+        // html-mf-hreview-aggregate, html-mf-license, html-mf-species, html-mf-xfn, html-microdata, html-rdfa11,
+        // html-script-turtle, html-xpath, rdf-jsonld, rdf-nq, rdf-nt, rdf-trix, rdf-turtle, rdf-xml
         Any23 runner = new Any23("html-microdata");
+//        Any23 runner = new Any23();
 
         // to fix java.nio.charset.UnsupportedCharsetException: Charset IBM424_rtl is not supported
 //        contents = Charset.forName("UTF-8").encode(contents).toString();
@@ -58,11 +65,11 @@ public class MicroDataExtraction {
         TripleHandler handler = new NTriplesWriter(out);
 
 
-        logger.debug("Triple handler occupied.");
+        logger.trace("Triple handler occupied.");
         String result = "";
 
         try {
-            logger.debug("Extracting microdata.");
+            logger.trace("Extracting microdata.");
             runner.extract(source, handler);
 //            throw new ExtractionException("s");
         } catch (ExtractionException e) {
