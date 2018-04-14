@@ -4,6 +4,7 @@ import ee.microdeduplication.processWarcFiles.utils.SimpleTuple;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang.StringEscapeUtils;
 import org.apache.hadoop.io.LongWritable;
+import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.InputSplit;
 import org.apache.hadoop.mapreduce.lib.input.FileSplit;
 import org.apache.log4j.LogManager;
@@ -19,6 +20,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
@@ -37,11 +39,21 @@ public class IgnoreFunction implements Function2<InputSplit, Iterator<Tuple2<Lon
     // TODO replace with bigger size
     private static final int LEN_LIMIT_TEXT = 13000000;
     private static final int LEN_LIMIT_OTHER = 0;
+    List<String> ignoreList = new ArrayList<String>();
 
     public Iterator<Tuple5<String, String, Integer, String, Integer>> call(InputSplit arg0,
                                                  Iterator<Tuple2<LongWritable, WarcRecord>> dataIterator) {
 
         FileSplit fileSplit = (FileSplit) arg0;
+
+        // todo refactor to where other filters are applied
+        // Ignore files that rarely have any meaningful text
+        ignoreList.add(".css");
+        ignoreList.add(".js");
+        ignoreList.add(".ttf");
+        ignoreList.add("jquery");
+        ignoreList.add(".gz");
+        ignoreList.add("robots.txt");
 
         //Retrieve the file name from the split
         String fileLocation = fileSplit.getPath().toString();
@@ -119,13 +131,15 @@ public class IgnoreFunction implements Function2<InputSplit, Iterator<Tuple2<Lon
 
                 String id = protocol + "::" + hostname + "::" + urlpath + "::" + param + "::" + dateString;
 
-                // payload = payload.replaceAll("\\\\", "");
+                for (String suffix : ignoreList) {
+                    if (urlpath.endsWith(suffix)) {
+                        retList.add(new Tuple5<String, String, Integer, String, Integer>(id, mime, size, "Ignore due to suffix", -1));
+                    }
+                }
+
                 retList.add(new Tuple5<String, String, Integer, String, Integer>(id, mime, size, payload, -2));
             } catch (NullPointerException e) {
                 // Most likely due to URL url = new URL(warcRecord.getHeader("WARC-Target-URI").value);
-                for (HeaderLine l: warcRecord.getHeaderList()){
-//                    System.out.println(l.name + " " + l.value);
-                }
                 e.printStackTrace();
                 retList.add(new Tuple5<String, String, Integer, String, Integer>(fileLocation, mime, size, "NullPointerException when creating ID", -1));
             } catch (MalformedURLException e) {
@@ -133,7 +147,7 @@ public class IgnoreFunction implements Function2<InputSplit, Iterator<Tuple2<Lon
             } catch (OutOfMemoryError e) {
 //                Exception when processing hdfs://ir-hadoop1:8020/data/webarchive/2017/08/1029-1-20170821151931191-00001-ciblee_2015_netarchive.warc
 //                Requested array size exceeds VM limit
-                logger.error("Exception when processing " + fileLocation);
+                logger.error("OutOfMemoryError when processing " + fileLocation);
                 logger.error(e.getMessage());
                 retList.add(new Tuple5<String, String, Integer, String, Integer>(fileLocation, mime, size, "OutOfMemoryError when creating ID", -1));
             } catch (IOException e) {
@@ -196,17 +210,6 @@ public class IgnoreFunction implements Function2<InputSplit, Iterator<Tuple2<Lon
             return new SimpleTuple(header, -1, "NumberFormatException when extracting httpHeader's Content-Length");
         }catch (NullPointerException e) {
             len = 100;
-//            // TODO why does this happen?
-//            logger.error("file " + key);
-//            for (HeaderLine l: warcRecord.getHeaderList()){
-//                logger.error(l.name + " " + l.value);
-//            }
-//            logger.error("**************************************");
-//            for (HeaderLine l: httpHeader.getHeaderList()){
-//                logger.error(l.name + " " + l.value);
-//            }
-//            logger.error("--------------------------------------");
-            // return new SimpleTuple("UNK", len, "NullPointerException when extracting httpHeader's Content-Length");
         }
 
 
@@ -238,8 +241,8 @@ public class IgnoreFunction implements Function2<InputSplit, Iterator<Tuple2<Lon
             target = LEN_LIMIT_TEXT;
         }
 
-        if (len > target){
-            //return new SimpleTuple(header, len, "Ignore due to file type size goal " + target);
+        if (target == 0){
+            return new SimpleTuple(header, len, "Ignore due to file type size goal " + target);
         }
 
         return new SimpleTuple(header, len, null);

@@ -1,6 +1,5 @@
 package ee.microdeduplication.processWarcFiles.utils;
 
-
 import org.apache.any23.Any23;
 import org.apache.any23.extractor.ExtractionException;
 import org.apache.any23.source.DocumentSource;
@@ -8,21 +7,23 @@ import org.apache.any23.source.StringDocumentSource;
 import org.apache.any23.writer.NTriplesWriter;
 import org.apache.any23.writer.TripleHandler;
 import org.apache.any23.writer.TripleHandlerException;
+import org.apache.commons.io.IOUtils;
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
-import org.json4s.Extraction;
+import org.ccil.cowan.tagsoup.XMLWriter;
 
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.io.StringReader;
-import java.io.UnsupportedEncodingException;
+import java.io.*;
 import java.nio.charset.Charset;
-import java.util.Arrays;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Set;
+import java.nio.charset.StandardCharsets;
+import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
+import org.ccil.cowan.tagsoup.Parser;
+import org.ccil.cowan.tagsoup.HTMLSchema;
+import org.jsoup.Jsoup;
+import org.jsoup.nodes.Document;
+import org.xml.sax.*;
 
 /*
  * Created by Khalil Rehman and Madis-Karli Koppel
@@ -42,7 +43,6 @@ public class MicroDataExtraction {
     public String extractMicroData(String key, String contents) {
 
         logger.debug("In extracting microdata.");
-
         // When setting the extractor to html-microdata we only get microdata such as schema.org etc
         // when not defining it then we do get a lot of noise
         // So we need to find correct extractors.
@@ -51,59 +51,80 @@ public class MicroDataExtraction {
         // html-mf-hcalendar, html-mf-hcard, html-mf-hlisting, html-mf-hrecipe, html-mf-hresume, html-mf-hreview,
         // html-mf-hreview-aggregate, html-mf-license, html-mf-species, html-mf-xfn, html-microdata, html-rdfa11,
         // html-script-turtle, html-xpath, rdf-jsonld, rdf-nq, rdf-nt, rdf-trix, rdf-turtle, rdf-xml
-        Any23 runner = new Any23("html-microdata");
-//        Any23 runner = new Any23();
+        Any23 runner = new Any23("html-rdfa11");
+        //Any23 runner = new Any23();
 
         // to fix java.nio.charset.UnsupportedCharsetException: Charset IBM424_rtl is not supported
-//        contents = Charset.forName("UTF-8").encode(contents).toString();
+        // doesn't actually work
+        //contents = Charset.forName("UTF-8").encode(contents).toString();
 
-        // uri needs be <string>:<string> or it will not work
-        DocumentSource source = new StringDocumentSource(contents, "java:MicroDataExtraction");
+        contents = fixHtml(contents);
+
+        // uri needs be <string>:/<string> or it will throw ExtractionException"Error in base IRI:"
+        DocumentSource source = new StringDocumentSource(contents, "java:/MicroDataExtraction");
 
         // handler writes ntriples into bytearrayoutputstream
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         TripleHandler handler = new NTriplesWriter(out);
 
-
         logger.trace("Triple handler occupied.");
         String result = "";
 
+        // clean the html data, html-rdfa11 from tpilet.ee
+        // before
+        // all
+        // 2.2  2121    1485 terms, 457 elements
+        // after (no header fix)
+        // 2.2  2105    1730 terms, 196 elements
+        // header fix and html fix
+        // 22   1853    1479 terms
+        // only header fix
+        // 2.2  2279    1561 terms, 457 elements
+        // correct printing
+        // html and doctype fix
+        // "<java:/MicroDataExtraction> <dc" 263
+        // purl.org 1853
+        // doctype fix
+        // purl.org 2279
+        // "<java:/MicroDataExtraction> <dc" 0
+
+
         try {
             logger.trace("Extracting microdata.");
+
             runner.extract(source, handler);
-//            throw new ExtractionException("s");
         } catch (ExtractionException e) {
             // org.apache.any23.extractor.ExtractionException: Error while processing on subject '_:node1a83b68da17a5c2fd93c11217f74d4c' the itemProp: '{ "xpath" : "/HTML[1]/BODY[1]/DIV[3]/FORM[1]/INPUT[1]", "name" : "query-input", "value" : { "content" : "Null", "type" : "Link" } }'
-            logger.debug(e.getMessage());
-            logger.debug("ExtractionException " + key);
-            return "EXCEPTION:ExtractionException";
+            logger.error(e.getMessage());
+            logger.error("ExtractionException " + key);
         } catch (java.nio.charset.UnsupportedCharsetException e) {
             // Charset IBM424_rtl is not supported
             // at org.apache.any23.extractor.html.TagSoupParser.<init>(TagSoupParser.java:83)
             logger.debug(e.getMessage());
-            logger.debug("UnsupportedCharsetException " + key);
-            return "EXCEPTION:UnsupportedCharsetException";
+            logger.error("UnsupportedCharsetException " + key);
+            e.printStackTrace();
         } catch (RuntimeException e) {
-            // TODO change to logger.debug
             // Error while retrieving mime type.
             // at org.apache.any23.mime.TikaMIMETypeDetector.guessMIMEType(TikaMIMETypeDetector.java:271)
             // Caused by: java.io.IOException: (line 0) invalid char between encapsulated token end delimiter
             // at org.apache.commons.csv.CSVParser.encapsulatedTokenLexer(CSVParser.java:510)
+            result = out.toString();
+            if (!result.isEmpty()) {
+//                logger.error("got " + out.toString());
+            }
             logger.debug(e.getMessage());
-            logger.debug("Unknown exception " + key);
-            return "EXCEPTION:RuntimeException";
+//            logger.error("RuntimeException " + key);
         } catch (Exception e) {
             e.printStackTrace();
             logger.error("Unknown exception " + key);
             logger.error(e.getMessage());
-            return "EXCEPTION:Exception";
         } catch (OutOfMemoryError e) {
             logger.error("OutOfMemoryError " + key);
-            logger.error(e.getMessage());
-            return "EXCEPTION:OutOfMemoryError";
+            logger.debug(e.getMessage());
         } catch (StackOverflowError e) {
             logger.error("StackOverflowError " + key);
-            return "EXCEPTION:StackOverflowError";
+        } catch (Error e) {
+            logger.error("Unknown Error : " + e.getMessage() + key);
         } finally {
             try {
                 out.close();
@@ -120,17 +141,30 @@ public class MicroDataExtraction {
         result = out.toString();
 
         if (!result.isEmpty()) {
+            result = removeDuplicateTriples(result);
+
+//            if (result.contains("purl.org") || result.contains("<java:/MicroDataExtraction> <dc:")) {
+//                String[] parts = result.split("\n");
+//                for (String p : parts) {
+//                    if (p.contains("<http://purl.org") || p.contains("<java:/MicroDataExtraction> <dc:")) {
+//                        System.out.println(p);
+//                    }
+//                }
+//            }
+
             // This is a common occurence, but only happens with real data
-            if (result.substring(result.length() - 1, result.length()).equals("<")) {
-                logger.error("BROKEN RESULT!");
+            if (!result.substring(result.length() - 2, result.length() - 1).equals(".")) {
+                logger.error("BROKEN RESULT1!");
                 logger.error(key);
+                logger.error(result);
+                logger.error(result.substring(result.length() - 1, result.length()));
             }
-            return removeDuplicateTriples(result);
+            // TODO remove duplicates
+            return result;
         } else {
             return "";
         }
     }
-
 
     /*
      * @param string nTriples - nTriples, separated by newline
@@ -168,9 +202,9 @@ public class MicroDataExtraction {
 
             String[] statParts = statement.split("\\s(<|\"|_)");
 
-            try{
+            try {
                 String check = statParts[0] + statParts[1] + statParts[2];
-            } catch (ArrayIndexOutOfBoundsException e){
+            } catch (ArrayIndexOutOfBoundsException e) {
                 continue;
             }
 
@@ -266,6 +300,106 @@ public class MicroDataExtraction {
         }
 
         return input;
+    }
+
+
+    private String fixHtml2(String contents) {
+        Document doc = Jsoup.parse(contents);
+        return fixDoctype(doc.html());
+    }
+
+    private String fixHtml(String contents) {
+        InputStream stream = new ByteArrayInputStream(contents.getBytes());
+
+        HTMLSchema schema = new HTMLSchema();
+        XMLReader reader = new Parser();
+
+        try {
+            reader.setProperty(Parser.schemaProperty, schema);
+        } catch (SAXNotRecognizedException | SAXNotSupportedException e) {
+            e.printStackTrace();
+        }
+
+        ByteArrayOutputStream out1 = new ByteArrayOutputStream(contents.getBytes().length + 100);
+        Writer writeger = new OutputStreamWriter(out1);
+        XMLWriter x = new XMLWriter(writeger);
+
+        reader.setContentHandler(x);
+
+        InputSource s = new InputSource(stream);
+        String contents0 = "";
+        try {
+            reader.parse(s);
+            contents0 = IOUtils.toString(new ByteArrayInputStream(out1.toByteArray()));
+            contents = insertDoctypeFromSource(contents0, contents);
+        } catch (Exception e) {
+            return contents;
+        }
+
+        return contents;
+    }
+
+    private String fixDoctype(String sourceHTML) {
+        String oldDoctype = "";
+        String fixedDoctype = "";
+        Pattern doctypePattern = Pattern.compile("<!DOCTYPE[^>]*>");
+        Matcher doctypeMatcher = doctypePattern.matcher(sourceHTML);
+
+        if (doctypeMatcher.find())
+            oldDoctype = doctypeMatcher.group(0);
+
+        if (oldDoctype.length() < 1)
+            return sourceHTML;
+
+        // White spaces are required between publicId and systemId.
+        // <!DOCTYPE HTML PUBLIC ""> becomes <!DOCTYPE HTML PUBLIC "" "">
+        String[] check = oldDoctype.replaceAll("\n", "").split("\"");
+
+        // chekc 1 is ok
+        if (check.length == 3) {
+            // maybe not set the strict stuff
+            fixedDoctype = oldDoctype.substring(0, oldDoctype.length() - 1) + "  \"http://www.w3.org/TR/html4/strict.dtd\">";
+        }
+
+        return sourceHTML.replaceFirst(Pattern.quote(oldDoctype), fixedDoctype);
+    }
+
+    protected static String insertDoctypeFromSource(String toBeReplacedHTML, String sourceHTML) {
+        String oldDoctype = "";
+        String currentHTMLHeader = "";
+        String xmlHeader = "<?xml version=\"1.0\" standalone=\"yes\"?>";
+
+        Pattern doctypePattern = Pattern.compile("<!DOCTYPE[^>]*>");
+        Matcher doctypeMatcher = doctypePattern.matcher(sourceHTML);
+
+        if (doctypeMatcher.find())
+            oldDoctype = doctypeMatcher.group(0);
+
+        if (oldDoctype.length() < 1)
+            return toBeReplacedHTML;
+
+        // White spaces are required between publicId and systemId.
+        // <!DOCTYPE HTML PUBLIC ""> becomes <!DOCTYPE HTML PUBLIC "" "">
+        String[] check = oldDoctype.replaceAll("\n", "").split("\"");
+
+        // chekc 1 is ok
+        if (check.length == 3) {
+            // maybe not set the strict stuff
+            oldDoctype = oldDoctype.substring(0, oldDoctype.length() - 1) + "  \"http://www.w3.org/\">";
+        }
+
+        Pattern htmlPattern = Pattern.compile("<html[^>]*>");
+        Matcher currentHeaderMatcher = htmlPattern.matcher(toBeReplacedHTML);
+        if (currentHeaderMatcher.find())
+            currentHTMLHeader = currentHeaderMatcher.group(0);
+
+        // <html> is length 6
+        if (currentHTMLHeader.length() < 6) {
+            toBeReplacedHTML = toBeReplacedHTML.replaceFirst(Pattern.quote(xmlHeader), xmlHeader + "\n" + oldDoctype);
+            return toBeReplacedHTML;
+        }
+
+        return toBeReplacedHTML.replaceFirst(Pattern.quote(currentHTMLHeader), oldDoctype + "\n" + currentHTMLHeader);
     }
 
     public MicroDataExtraction(List<String> statementsList) {

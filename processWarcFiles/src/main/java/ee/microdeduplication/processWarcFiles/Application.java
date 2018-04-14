@@ -61,7 +61,7 @@ public class Application {
 
         long end = System.currentTimeMillis();
 
-        logger.info("run time: " + String.valueOf(end - start));
+        logger.error("run time: " + String.valueOf(end - start));
     }
 
 
@@ -84,34 +84,16 @@ public class Application {
         JavaNewHadoopRDD<LongWritable, WarcRecord> warcRecords =
                 (JavaNewHadoopRDD<LongWritable, WarcRecord>) sc.newAPIHadoopFile(warcFileDirectoryPath, WarcInputFormat.class, LongWritable.class, WarcRecord.class, hadoopconf);
 
-        // url, mime/type, size, exception(s), # of triples
-        // Ignore metadata files - they are big (1 GB) and reading them takes too much time
-//        JavaPairRDD<String, String, Integer, String, Integer> warcsWithoutMetadata =
-//                warcRecords
-//                        .mapPartitionsWithInputSplit(new IgnoreFunction(), false)
-//                        .mapToPair(new MapToPairFunction());
-
         JavaRDD<Tuple5<String, String, Integer, String, Integer>> warcsWithoutMetadata = warcRecords.mapPartitionsWithInputSplit(new IgnoreFunction(), false);
 
 
         // Extract ntriples from warc files
-        JavaRDD<Tuple5<String, String, Integer, String, Integer>> ntriples =
+        JavaPairRDD<Text, Text> ntriples =
                 warcsWithoutMetadata
-                        .map(new ExtractMicrodataPairFlatMapFunction());
+                        .flatMapToPair(new ExtractMicrodataPairFlatMapFunction());
 
-        ntriples.saveAsTextFile(nTriplesDirectoryPath);
-
-        int triples = 0;
-
-        for (Tuple5 i: ntriples.collect()){
-            int cnt2 = (Integer) i._5();
-            if (cnt2 > 0){
-                triples += cnt2;
-            }
-        }
-        logger.error("total triples");
-        logger.error(triples);
-
+        ntriples.saveAsNewAPIHadoopFile(nTriplesDirectoryPath, Text.class, Text.class, org.apache.hadoop.mapreduce.lib.output.SequenceFileOutputFormat.class, hadoopconf);
+        //ntriples.saveAsTextFile(nTriplesDirectoryPath);
 
         // 1032-1-20170821154232650-00002-ciblee_2015_netarchive.warc
         //    438 with exceptions (number of triples)
