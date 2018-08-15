@@ -2,16 +2,10 @@ package ee.microdeduplication.processWarcFiles.utils.spark;
 
 import ee.microdeduplication.processWarcFiles.utils.SimpleTuple;
 import org.apache.commons.io.IOUtils;
-import org.apache.commons.lang.StringEscapeUtils;
 import org.apache.hadoop.io.LongWritable;
-import org.apache.hadoop.io.Text;
-import org.apache.hadoop.mapreduce.InputSplit;
-import org.apache.hadoop.mapreduce.lib.input.FileSplit;
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
 import org.apache.spark.api.java.function.Function;
-import org.apache.spark.api.java.function.Function2;
-import org.jwat.common.HeaderLine;
 import org.jwat.common.HttpHeader;
 import org.jwat.warc.WarcRecord;
 import scala.Tuple2;
@@ -21,18 +15,13 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.MalformedURLException;
 import java.net.URL;
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.LinkedList;
+import java.util.Arrays;
 import java.util.List;
 
 /**
  * Created by Madis-Karli Koppel on 15/12/2017.
- * inspired by http://baahu.in/spark-how-to-get-the-file-name-for-a-record-of-an-rdd/
- * filter the filename to ignore metadata files
- * these just kept running for hours and I did not find a better way to filter them
  */
-public class IgnoreFunction implements Function<Tuple2<Long, WarcRecord>, Tuple5<String, String, Integer, String, Integer>> {
+public class IgnoreFunction implements Function<Tuple2<LongWritable, WarcRecord>, Tuple5<String, String, Integer, String, Integer>> {
 
     private static final Logger logger = LogManager.getLogger(IgnoreFunction.class);
 
@@ -40,26 +29,23 @@ public class IgnoreFunction implements Function<Tuple2<Long, WarcRecord>, Tuple5
     // TODO replace with bigger size
     private static final int LEN_LIMIT_TEXT = 13000000;
     private static final int LEN_LIMIT_OTHER = 0;
-    List<String> ignoreList = new ArrayList<String>();
+    List<String> ignoreList = Arrays.asList(
+            ".css",
+            ".js",
+            ".ttf",
+            "jquery",
+            ".gz",
+            "robots.txt"
+    );
 
-    public Tuple5<String, String, Integer, String, Integer> call(Tuple2<Long, WarcRecord> v1) {
-        // todo refactor to where other filters are applied
-        // Ignore files that rarely have any meaningful text
-        ignoreList.add(".css");
-        ignoreList.add(".js");
-        ignoreList.add(".ttf");
-        ignoreList.add("jquery");
-        ignoreList.add(".gz");
-        ignoreList.add("robots.txt");
-
+    public Tuple5<String, String, Integer, String, Integer> call(Tuple2<LongWritable, WarcRecord> next) {
         //Retrieve the file name from the split
-        // TODO decide if we need this
+        // TODO refactor triples not to include this
         String fileLocation = "uh oh";
 
 
         logger.trace("processing " + fileLocation);
 
-        Tuple2<Long, WarcRecord> next = v1;
         WarcRecord warcRecord = next._2;
 
         String mime;
@@ -85,9 +71,11 @@ public class IgnoreFunction implements Function<Tuple2<Long, WarcRecord>, Tuple5
 
 
         SimpleTuple typeFilter = filterHttpHeader(httpHeader, fileLocation, warcRecord);
+
         if (typeFilter.comment != null) {
             return new Tuple5<String, String, Integer, String, Integer>(fileLocation, typeFilter.mime, typeFilter.size, typeFilter.comment, -1);
         }
+
         mime = typeFilter.mime;
         size = typeFilter.size;
 
@@ -95,7 +83,7 @@ public class IgnoreFunction implements Function<Tuple2<Long, WarcRecord>, Tuple5
 
 
         try {
-            InputStream payloadStream = warcRecord.getPayload().getInputStream();
+            InputStream payloadStream = warcRecord.getPayload().getInputStreamComplete();
 
             payload = IOUtils.toString(payloadStream);
 
@@ -134,7 +122,8 @@ public class IgnoreFunction implements Function<Tuple2<Long, WarcRecord>, Tuple5
             logger.error(e.getMessage());
             return new Tuple5<String, String, Integer, String, Integer>(fileLocation, mime, size, "OutOfMemoryError when creating ID", -1);
         } catch (IOException e) {
-            return new Tuple5<String, String, Integer, String, Integer>(fileLocation, mime, size, "IOException when creating reading warc record", -1);
+            logger.error("IOException: " + e.getMessage());
+            return new Tuple5<String, String, Integer, String, Integer>(fileLocation, mime, size, "IOException when reading warc record", -1);
         }
     }
 
@@ -188,7 +177,6 @@ public class IgnoreFunction implements Function<Tuple2<Long, WarcRecord>, Tuple5
             len_s = warcRecord.getHeader("Content-Length").value;
             len = Integer.valueOf(len_s);
         } catch (NumberFormatException e) {
-            logger.error(len_s);
             return new SimpleTuple(header, -1, "NumberFormatException when extracting httpHeader's Content-Length");
         } catch (NullPointerException e) {
             len = 100;

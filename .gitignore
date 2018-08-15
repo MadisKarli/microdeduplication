@@ -6,3 +6,9 @@ target/
 deduplicaiton/keys/
 
 pictures/
+
+*.log
+
+processWarcFiles/metastore_db/
+
+processWarcFiles/tmp

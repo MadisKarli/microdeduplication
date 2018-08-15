@@ -9,17 +9,25 @@ import org.apache.any23.writer.TripleHandler;
 import org.apache.any23.writer.TripleHandlerException;
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
+import org.apache.tika.io.IOUtils;
+import org.ccil.cowan.tagsoup.HTMLSchema;
+import org.ccil.cowan.tagsoup.Parser;
+import org.ccil.cowan.tagsoup.XMLWriter;
+import org.eclipse.rdf4j.rio.*;
+import org.eclipse.rdf4j.rio.helpers.BasicParserSettings;
+import org.xml.sax.InputSource;
+import org.xml.sax.SAXNotRecognizedException;
+import org.xml.sax.SAXNotSupportedException;
+import org.xml.sax.XMLReader;
 
 import java.io.*;
-import java.util.*;
+import java.util.Arrays;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import org.eclipse.rdf4j.model.Model;
-import org.eclipse.rdf4j.model.impl.SimpleValueFactory;
-import org.eclipse.rdf4j.rio.*;
-import org.eclipse.rdf4j.rio.helpers.BasicParserSettings;
-import org.eclipse.rdf4j.rio.helpers.ParseErrorLogger;
 /*
  * Created by Khalil Rehman and Madis-Karli Koppel
  * Extracts ntriples from strings (Html and xml files)
@@ -43,8 +51,7 @@ public class MicroDataExtraction {
         // doesn't actually work
         //contents = Charset.forName("UTF-8").encode(contents).toString();
 
-//        contents = fixHtml(contents);
-
+        contents = fixHtml(contents);
 
         // 2.2
         String[] extractors = new String[]{
@@ -79,21 +86,13 @@ public class MicroDataExtraction {
                 "rdf-xml",
                 "yaml"};
 
-        extractors = new String[]{"html-microdata"};
-
-        // 1.1
-//        extractors = new String[]{"csv", "html-head-icbm", "html-head-links", "html-head-title", "html-mf-adr", "html-mf-geo",
-//                "html-mf-hcalendar", "html-mf-hcard", "html-mf-hlisting", "html-mf-hrecipe", "html-mf-hresume", "html-mf-hreview",
-//                "html-mf-hreview-aggregate", "html-mf-license", "html-mf-species", "html-mf-xfn", "html-microdata", "html-rdfa11",
-//                "html-script-turtle", "html-xpath", "rdf-jsonld", "rdf-nq", "rdf-nt", "rdf-trix", "rdf-turtle", "rdf-xml"
-//        };
-
         String combinedResult = "";
 
+        //logger.error("parsing " + key);
         for (String extractor : extractors) {
-            String stuff = useExtractor(extractor, contents, key);
-            combinedResult += stuff;
+            combinedResult += useExtractor(extractor, contents, key);
         }
+
         return combinedResult;
     }
 
@@ -102,16 +101,15 @@ public class MicroDataExtraction {
         Any23 runner = new Any23(extractorName);
 
         String[] keyParts = key.split("::");
+
         // uri needs be <string>:/<string> or it will throw ExtractionException"Error in base IRI:"
-        // DocumentSource source = new StringDocumentSource(contents, "java:/MicroDataExtraction");
-        DocumentSource source = new StringDocumentSource(contents, keyParts[0] + "://" + keyParts[1] + keyParts[2]);
         // using the whole key causes exceptions
-        // DocumentSource source = new StringDocumentSource(contents, key);
+        DocumentSource source = new StringDocumentSource(contents, keyParts[0] + "://" + keyParts[1] + keyParts[2]);
+
 
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         TripleHandler handler = new NTriplesWriter(out);
 
-        logger.trace("Triple handler occupied.");
         String result = "";
 
         try {
@@ -127,6 +125,9 @@ public class MicroDataExtraction {
             // at org.apache.any23.extractor.html.TagSoupParser.<init>(TagSoupParser.java:83)
             logger.debug(e.getMessage());
             logger.error("UnsupportedCharsetException " + key + " " + extractorName);
+        } catch (UnsupportedRDFormatException e) {
+            logger.error("UnsupportedRDFormatException " + key + " " + extractorName);
+            //e.printStackTrace();
         } catch (RuntimeException e) {
             // Error while retrieving mime type.
             // at org.apache.any23.mime.TikaMIMETypeDetector.guessMIMEType(TikaMIMETypeDetector.java:271)
@@ -143,8 +144,13 @@ public class MicroDataExtraction {
             logger.debug(e.getMessage());
         } catch (StackOverflowError e) {
             logger.error("StackOverflowError " + key + " " + extractorName);
+        } catch (NoSuchMethodError e) {
+            logger.error("NoSuchMethodError : " + e.getMessage() + " " + key + " " + extractorName);
+            // html-embedded-jsonld throws this quite often
         } catch (Error e) {
             logger.error("Unknown Error : " + e.getMessage() + " " + key + " " + extractorName);
+            e.printStackTrace();
+            // org.apache.commons.compress.archivers.ArchiveStreamFactory;
         } finally {
             try {
                 out.close();
@@ -170,7 +176,6 @@ public class MicroDataExtraction {
                 logger.error(result);
                 logger.error(result.substring(result.length() - 1, result.length()));
             }
-            // TODO remove duplicates
             return result;
         }
         return "";
@@ -200,9 +205,6 @@ public class MicroDataExtraction {
     public void setStatements(String key, String nTriples) {
 
         String[] statements = nTriples.split("(\\s\\.)(\\r?\\n)");
-        StringBuilder stat;
-
-        Set<String> subjects = new HashSet<String>();
 
         for (String statement : statements) {
 
@@ -211,11 +213,6 @@ public class MicroDataExtraction {
 
             statement = statement + " .";
 //            logger.error(statement);
-
-            String subject = null;
-            String predicate = null;
-            String object = null;
-
 
             // This here parses the extracted triples to make sure they are all correct ones
             // breaks when a triple is not according to standard, then nothing is returned
@@ -228,9 +225,10 @@ public class MicroDataExtraction {
 
                 ParserConfig parserConfig = new ParserConfig();
                 parserConfig.set(BasicParserSettings.PRESERVE_BNODE_IDS, true);
-                // IRI includes string escapes: '\34'
-                // https://openrdf.atlassian.net/browse/SES-2390
-                parserConfig.set(BasicParserSettings.VERIFY_URI_SYNTAX, false);
+
+                // MUST BE TRUE for neo4j
+                // IRI includes string escapes: '\34' https://openrdf.atlassian.net/browse/SES-2390
+                parserConfig.set(BasicParserSettings.VERIFY_URI_SYNTAX, true);
 
                 rdfParser.setParserConfig(parserConfig);
                 rdfParser.setRDFHandler(rdfWriter);
@@ -244,33 +242,85 @@ public class MicroDataExtraction {
             } catch (RDFParseException e) {
                 logger.error("RDFParseException when parsing " + key);
 //                e.printStackTrace();
+
+            } catch (UnsupportedRDFormatException e) {
+                logger.error("UnsupportedRDFormatException when parsing " + key);
+                logger.error(statement);
             } catch (Exception e) {
                 logger.error("Exception when parsing " + key);
                 e.printStackTrace();
             }
+            //logger.error(statementsList);
         }
     }
 
-    /*
-     * removes genid-.. from node that is added there by Rio.parse
-     * if input does not match pattern then input is returned
-     */
-    private String removeGeneratedID(String input) {
+    private String fixHtml(String contents) {
+        InputStream stream = new ByteArrayInputStream(contents.getBytes());
 
-        // check if input string matches genid pattern
-        Pattern testPattern = Pattern.compile("_:genid-.*-node.*");
-        Matcher m = testPattern.matcher(input);
-        if (!m.find())
-            return input;
+        HTMLSchema schema = new HTMLSchema();
+        XMLReader reader = new Parser();
 
-        // extract the node part from the string
-        Pattern realPattern = Pattern.compile("node.*");
-        m = realPattern.matcher(input);
-        if (m.find()) {
-            return "_:" + m.group(0);
+        try {
+            reader.setProperty(Parser.schemaProperty, schema);
+        } catch (SAXNotRecognizedException | SAXNotSupportedException e) {
+            e.printStackTrace();
         }
 
-        return input;
+        ByteArrayOutputStream out1 = new ByteArrayOutputStream(contents.getBytes().length + 100);
+        Writer writeger = new OutputStreamWriter(out1);
+        XMLWriter x = new XMLWriter(writeger);
+
+        reader.setContentHandler(x);
+
+        InputSource s = new InputSource(stream);
+        String contents0 = "";
+        try {
+            reader.parse(s);
+            contents0 = IOUtils.toString(new ByteArrayInputStream(out1.toByteArray()));
+            contents = insertDoctypeFromSource(contents0, contents);
+        } catch (Exception e) {
+            return contents;
+        }
+
+        return contents;
+    }
+
+    protected static String insertDoctypeFromSource(String toBeReplacedHTML, String sourceHTML) {
+        String oldDoctype = "";
+        String currentHTMLHeader = "";
+        String xmlHeader = "<?xml version=\"1.0\" standalone=\"yes\"?>";
+
+        Pattern doctypePattern = Pattern.compile("<!DOCTYPE[^>]*>");
+        Matcher doctypeMatcher = doctypePattern.matcher(sourceHTML);
+
+        if (doctypeMatcher.find())
+            oldDoctype = doctypeMatcher.group(0);
+
+        if (oldDoctype.length() < 1)
+            return toBeReplacedHTML;
+
+        // White spaces are required between publicId and systemId.
+        // <!DOCTYPE HTML PUBLIC ""> becomes <!DOCTYPE HTML PUBLIC "" "">
+        String[] check = oldDoctype.replaceAll("\n", "").split("\"");
+
+        // chekc 1 is ok
+        if (check.length == 3) {
+            // maybe not set the strict stuff
+            oldDoctype = oldDoctype.substring(0, oldDoctype.length() - 1) + "  \"http://www.w3.org/\">";
+        }
+
+        Pattern htmlPattern = Pattern.compile("<html[^>]*>");
+        Matcher currentHeaderMatcher = htmlPattern.matcher(toBeReplacedHTML);
+        if (currentHeaderMatcher.find())
+            currentHTMLHeader = currentHeaderMatcher.group(0);
+
+        // <html> is length 6
+        if (currentHTMLHeader.length() < 6) {
+            toBeReplacedHTML = toBeReplacedHTML.replaceFirst(Pattern.quote(xmlHeader), xmlHeader + "\n" + oldDoctype);
+            return toBeReplacedHTML;
+        }
+
+        return toBeReplacedHTML.replaceFirst(Pattern.quote(currentHTMLHeader), oldDoctype + "\n" + currentHTMLHeader);
     }
 
 
