@@ -4,7 +4,7 @@
 
     <groupId>ee.thesis</groupId>
     <artifactId>processWarcFiles</artifactId>
-    <version>1.1</version>
+    <version>1.2</version>
     <packaging>jar</packaging>
 
     <name>processSeqFiles</name>
@@ -62,7 +62,7 @@
                         <manifest>
                             <addClasspath>true</addClasspath>
                             <classpathPrefix>lib/</classpathPrefix>
-                            <mainClass>processSeqFiles.Application</mainClass>
+                            <mainClass>ee.microdeduplication.processWarcFiles.Application</mainClass>
                         </manifest>
                     </archive>
                 </configuration>
@@ -91,46 +91,6 @@
                     </execution>
                 </executions>
             </plugin>
-            <!-- copy maven downloads to target -->
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-dependency-plugin</artifactId>
-                <executions>
-                    <execution>
-                        <phase>install</phase>
-                        <goals>
-                            <goal>copy-dependencies</goal>
-                        </goals>
-                        <configuration>
-                            <outputDirectory>${project.build.directory}/lib</outputDirectory>
-                        </configuration>
-                    </execution>
-                </executions>
-            </plugin>
-            <!-- Assembly -->
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-assembly-plugin</artifactId>
-                <version>2.4</version>
-                <configuration>
-                    <archive>
-                        <manifest>
-                            <mainClass>ee.microdeduplication.processWarcFiles.Application</mainClass>
-                        </manifest>
-                    </archive>
-                    <descriptorRefs>
-                        <descriptorRef>jar-with-dependencies</descriptorRef>
-                    </descriptorRefs>
-                </configuration>
-                <executions>
-                    <execution>
-                        <phase>package</phase>
-                        <goals>
-                            <goal>single</goal>
-                        </goals>
-                    </execution>
-                </executions>
-            </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
@@ -140,8 +100,6 @@
                     <target>1.8</target>
                 </configuration>
             </plugin>
-            <!-- Shade for oozie  issues -->
-            <!-- to combat org.apache.oozie.action.hadoop.JavaMainException: com.typesafe.config.ConfigException$Missing: No configuration setting found for key 'akka.version'  -->
             <plugin>
                 <artifactId>maven-shade-plugin</artifactId>
                 <version>3.1.1</version>

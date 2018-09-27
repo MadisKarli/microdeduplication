@@ -2,6 +2,7 @@ package ee.microdeduplication.processWarcFiles.utils;
 
 import org.apache.any23.Any23;
 import org.apache.any23.extractor.ExtractionException;
+import org.apache.any23.extractor.ExtractionParameters;
 import org.apache.any23.source.DocumentSource;
 import org.apache.any23.source.StringDocumentSource;
 import org.apache.any23.writer.NTriplesWriter;
@@ -36,6 +37,14 @@ public class MicroDataExtraction {
 
     private static final Logger logger = LogManager.getLogger(MicroDataExtraction.class);
 
+    private static final boolean FIX_TRIPLES = false;
+
+    private static final boolean CREATE_QUADS = true;
+
+    private static final boolean WORKAROUND_VCARD_INSERT_DOMAIN = true;
+
+    private static final boolean WORKAROUND_BROKEN_OGP = true;
+
     List<String> statementsList;
 
     /*
@@ -52,6 +61,11 @@ public class MicroDataExtraction {
         //contents = Charset.forName("UTF-8").encode(contents).toString();
 
         contents = fixHtml(contents);
+
+        if (WORKAROUND_BROKEN_OGP) {
+            contents = contents.replaceAll("property=\"article:", "property=\"og:article:");
+            contents = contents.replaceAll("property=\"profile:", "property=\"og:profile:");
+        }
 
         // 2.2
         String[] extractors = new String[]{
@@ -86,6 +100,8 @@ public class MicroDataExtraction {
                 "rdf-xml",
                 "yaml"};
 
+//        extractors = new String[]{"html-rdfa11"};
+
         String combinedResult = "";
 
         //logger.error("parsing " + key);
@@ -99,6 +115,8 @@ public class MicroDataExtraction {
 
     private String useExtractor(String extractorName, String contents, String key) {
         Any23 runner = new Any23(extractorName);
+
+        ExtractionParameters extractionParameters = ExtractionParameters.newDefault();
 
         String[] keyParts = key.split("::");
 
@@ -115,7 +133,7 @@ public class MicroDataExtraction {
         try {
             logger.trace("Extracting microdata.");
 
-            runner.extract(source, handler);
+            runner.extract(extractionParameters, source, handler);
         } catch (ExtractionException e) {
             // org.apache.any23.extractor.ExtractionException: Error while processing on subject '_:node1a83b68da17a5c2fd93c11217f74d4c' the itemProp: '{ "xpath" : "/HTML[1]/BODY[1]/DIV[3]/FORM[1]/INPUT[1]", "name" : "query-input", "value" : { "content" : "Null", "type" : "Link" } }'
             logger.debug(e.getMessage());
@@ -169,7 +187,7 @@ public class MicroDataExtraction {
         if (!result.isEmpty()) {
             result = removeDuplicateTriples(result);
 
-            // This is a common occurence, but only happens with real data
+            // This is a common occurrence, but only happens with real data
             if (!result.substring(result.length() - 2, result.length() - 1).equals(".")) {
                 logger.error("BROKEN RESULT1!");
                 logger.error(key);
@@ -212,46 +230,102 @@ public class MicroDataExtraction {
                 continue;
 
             statement = statement + " .";
-//            logger.error(statement);
 
-            // This here parses the extracted triples to make sure they are all correct ones
-            // breaks when a triple is not according to standard, then nothing is returned
-            try {
-                OutputStream outputStream = new ByteArrayOutputStream();
-
-                RDFWriter rdfWriter = Rio.createWriter(RDFFormat.NTRIPLES, outputStream);
-
-                RDFParser rdfParser = Rio.createParser(RDFFormat.NTRIPLES);
-
-                ParserConfig parserConfig = new ParserConfig();
-                parserConfig.set(BasicParserSettings.PRESERVE_BNODE_IDS, true);
-
-                // MUST BE TRUE for neo4j
-                // IRI includes string escapes: '\34' https://openrdf.atlassian.net/browse/SES-2390
-                parserConfig.set(BasicParserSettings.VERIFY_URI_SYNTAX, true);
-
-                rdfParser.setParserConfig(parserConfig);
-                rdfParser.setRDFHandler(rdfWriter);
-
-                rdfParser.parse(new StringReader(statement), "");
-
-                statementsList.add(outputStream.toString().replaceAll("\n", ""));
-            } catch (IOException e) {
-                logger.error("IOException when parsing " + key);
-                e.printStackTrace();
-            } catch (RDFParseException e) {
-                logger.error("RDFParseException when parsing " + key);
-//                e.printStackTrace();
-
-            } catch (UnsupportedRDFormatException e) {
-                logger.error("UnsupportedRDFormatException when parsing " + key);
-                logger.error(statement);
-            } catch (Exception e) {
-                logger.error("Exception when parsing " + key);
-                e.printStackTrace();
+            // Vcard, stupid, does not contain a reference to domain
+            // as a workaround, take domain from key and insert it there
+            if (WORKAROUND_VCARD_INSERT_DOMAIN) {
+                statement = addURLToTriple(key, statement);
             }
+
+            if (FIX_TRIPLES) {
+                statement = fixTriple(key, statement);
+            }
+
+
+            if (CREATE_QUADS) {
+                // To get quads we could also use the quads writer but it will not give date information
+                statement = "<" + key + "> " + statement;
+            }
+
+            statementsList.add(statement);
             //logger.error(statementsList);
         }
+    }
+
+    private String addURLToTriple(String key, String statement){
+        // only work with vcard triples, that have the issue
+        if (!statement.contains("vcard")){
+            return statement;
+        }
+
+        String[] parts = statement.split(" ");
+
+        // vcard itself creates some own ids that are shorter than ids generated by any23
+        // but these are not a problem here, as they are connected to longer id, that is then connected to domain
+        if (parts[0].length() < 25){
+            return statement;
+        }
+
+        if (parts[0].contains(":node")){
+            // Replace _:node with key
+            String[] keyParts = key.split("::");
+
+            // remove datetime
+            keyParts[4] = "";
+
+
+            if (keyParts[3] == "null")
+                keyParts[3] = "";
+
+            String url = String.join("", keyParts);
+
+            parts[0] = "<" + url + ">";
+            statement = String.join(" ", parts);
+        }
+
+        return statement;
+    }
+
+    private String fixTriple(String key, String statement){
+        // This here parses the extracted triples to make sure they are all correct ones
+        // breaks when a triple is not according to standard, then nothing is returned
+        try {
+            OutputStream outputStream = new ByteArrayOutputStream();
+
+            RDFWriter rdfWriter = Rio.createWriter(RDFFormat.NTRIPLES, outputStream);
+
+            RDFParser rdfParser = Rio.createParser(RDFFormat.NTRIPLES);
+
+            ParserConfig parserConfig = new ParserConfig();
+            parserConfig.set(BasicParserSettings.PRESERVE_BNODE_IDS, true);
+
+            // MUST BE TRUE for neo4j
+            // IRI includes string escapes: '\34' https://openrdf.atlassian.net/browse/SES-2390
+            parserConfig.set(BasicParserSettings.VERIFY_URI_SYNTAX, true);
+
+            rdfParser.setParserConfig(parserConfig);
+            rdfParser.setRDFHandler(rdfWriter);
+
+            rdfParser.parse(new StringReader(statement), "");
+
+            return outputStream.toString().replaceAll("\n", "");
+        } catch (IOException e) {
+            logger.error("IOException when parsing " + key);
+            e.printStackTrace();
+        } catch (RDFParseException e) {
+            logger.error("RDFParseException when parsing " + key);
+//                e.printStackTrace();
+
+        } catch (UnsupportedRDFormatException e) {
+            logger.error("UnsupportedRDFormatException when parsing " + key);
+            logger.error(statement);
+        } catch (Exception e) {
+            logger.error("Exception when parsing " + key);
+            e.printStackTrace();
+        }
+
+        // TODO return null and check the return value?
+        return "";
     }
 
     private String fixHtml(String contents) {

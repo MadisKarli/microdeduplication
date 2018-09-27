@@ -50,7 +50,7 @@ public class Application {
 
         String seqFileDirectoryPath = args[0];
         // TODO remove when final
-        //String nTriplesDirectoryPath = args[1] + System.currentTimeMillis();
+//        String nTriplesDirectoryPath = args[1] + System.currentTimeMillis();
         String nTriplesDirectoryPath = args[1];
 
         sparkNtripleExtractor(seqFileDirectoryPath, nTriplesDirectoryPath);
@@ -58,6 +58,7 @@ public class Application {
         long end = System.currentTimeMillis();
 
         logger.error("run time: " + String.valueOf(end - start));
+        logger.error("triples from " + seqFileDirectoryPath + " are saved to " + nTriplesDirectoryPath);
     }
 
 
@@ -73,7 +74,7 @@ public class Application {
         // against java.io.IOException: Filesystem closed
         hadoopconf.setBoolean("fs.hdfs.impl.disable.cache", true);
 
-        SparkConf sparkConf = new SparkConf().setAppName("metadata extractor");
+        SparkConf sparkConf = new SparkConf().setAppName("metadata extractor from " + warcFileDirectoryPath);
 
         JavaSparkContext sc = new JavaSparkContext(sparkConf);
         sc.setLogLevel("ERROR");
