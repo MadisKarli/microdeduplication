@@ -4,7 +4,7 @@
 
     <groupId>ee.thesis</groupId>
     <artifactId>processWarcFiles</artifactId>
-    <version>1.2</version>
+    <version>1.2.1</version>
     <packaging>jar</packaging>
 
     <name>processSeqFiles</name>

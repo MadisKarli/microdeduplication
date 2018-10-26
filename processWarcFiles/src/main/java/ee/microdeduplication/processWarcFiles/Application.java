@@ -83,11 +83,11 @@ public class Application {
         JavaNewHadoopRDD<LongWritable, WarcRecord> warcRecords =
                 (JavaNewHadoopRDD<LongWritable, WarcRecord>) sc.newAPIHadoopFile(warcFileDirectoryPath, WarcInputFormat.class, LongWritable.class, WarcRecord.class, hadoopconf);
 
-        // Ignore metadata files and thenn call IgnoreFunction for more specific filtering
+        // Ignore metadata files and then call IgnoreFunction for more specific filtering
         JavaRDD<Tuple5<String, String, Integer, String, Integer>> warcsWithoutMetadata = warcRecords
                 .filter(line -> {
                     try {
-                        return !line._2.header.warcFilename.contains("metadata");
+                        return !line._2.header.warcFilename.contains("-metadata-");
                     } catch (NullPointerException e) {
                         return true;
                     }

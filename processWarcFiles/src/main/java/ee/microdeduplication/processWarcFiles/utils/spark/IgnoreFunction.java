@@ -146,7 +146,7 @@ public class IgnoreFunction implements Function<Tuple2<LongWritable, WarcRecord>
             return new SimpleTuple(header, len, "Ignore warc specific content: text/dns");
         }
 
-        if (header.equals("") || header.equals(" ")) {
+        if (header.trim().equals("")) {
             return new SimpleTuple("empty", len, "Ignore empty Content-Type");
         }
 
